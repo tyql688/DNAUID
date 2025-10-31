@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DNAUID 登录</title>
+    <link
+      rel="icon"
+      href="https://herobox-img.yingxiong.com/h5/img/logo_1.png"
+      type="image/x-icon"
+    />
+    <script src="https://dnabbs.yingxiong.com/lib/ct4.js"></script>
+    <script
+      type="text/javascript"
+      charset="utf-8"
+      src="https://apps.bdimg.com/libs/jquery/1.6.4/jquery.min.js"
+    ></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: "Microsoft YaHei", sans-serif;
+      }
+
+      body {
+        background-image: url("https://herobox-img.yingxiong.com/post/1748784746036602530.jpg");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: inherit;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        filter: blur(8px);
+        z-index: -1;
+      }
+
+      .login-container {
+        background-color: rgba(255, 255, 255, 0.2);
+        padding: 2rem;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        width: 320px;
+        transition: all 0.3s ease;
+      }
+
+      .login-container:hover {
+        /* transform: translateY(-5px); */
+        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.45);
+      }
+
+      .login-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 2rem;
+        justify-content: space-between;
+      }
+
+      .banner {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 3px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        margin-right: 0.5rem;
+      }
+
+      .banner img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .banner-text {
+        flex: 1;
+        padding-right: 1rem;
+        margin-left: 0.5rem;
+      }
+
+      .welcome-text {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.25rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+      }
+
+      .logo-text {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.25rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+      }
+
+      .dnabbs-text {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #e6e6e6;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+      }
+
+      .input-group {
+        margin-bottom: 1.5rem;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #fff;
+        font-weight: 500;
+      }
+
+      input[type="tel"],
+      input[type="text"] {
+        width: 100%;
+        padding: 0.75rem;
+        border: none;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-size: 16px;
+        background-color: rgba(255, 255, 255, 0.9);
+        transition: all 0.3s ease;
+      }
+
+      input[type="tel"]:focus,
+      input[type="text"]:focus {
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.6);
+      }
+
+      .verification-group {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .verification-group input {
+        flex-grow: 1;
+      }
+
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        background-color: #4a90e2;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      button:hover {
+        background-color: #357abd;
+        /* transform: translateY(-2px); */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      #getCodeBtn {
+        width: auto;
+        white-space: nowrap;
+        padding: 0.75rem 1rem;
+        display: inline-block;
+      }
+
+      .user-id-display {
+        text-align: right;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.8em;
+        margin-bottom: 10px;
+        transition: opacity 0.3s ease;
+      }
+
+      .user-id-display:hover {
+        opacity: 1;
+      }
+
+      .toast-container {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        width: 90%;
+        max-width: 400px;
+      }
+
+      .toast {
+        padding: 1rem 1.5rem;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        color: white;
+        font-weight: 500;
+        text-align: center;
+        transform: translateY(-100px);
+        opacity: 0;
+        transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      }
+
+      .toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      .toast.hide {
+        transform: translateY(-100px);
+        opacity: 0;
+      }
+
+      .toast.success {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+
+      .toast.error {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+
+      .toast.warning {
+        background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        color: #333;
+      }
+
+      .toast.info {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="login-container">
+      <div class="login-header">
+        <div class="banner-text">
+          <div class="welcome-text">欢迎登录</div>
+          <div class="logo-text">DNAUID</div>
+          <div class="dnabbs-text">皎皎角</div>
+        </div>
+        <div class="banner">
+          <img
+            src="https://herobox-img.yingxiong.com/role/config/character/icon/Head_Songlu.png"
+            alt="Banner"
+          />
+        </div>
+      </div>
+      <form id="loginForm">
+        <div class="input-group">
+          <label for="phone">手机号</label>
+          <input
+            type="tel"
+            id="phone"
+            name="phone"
+            required
+            pattern="[0-9]{11}"
+            placeholder="请输入11位手机号"
+          />
+        </div>
+        <div class="input-group">
+          <label for="verificationCode">验证码</label>
+          <div class="verification-group">
+            <input
+              type="text"
+              id="verificationCode"
+              name="verificationCode"
+              required
+              placeholder="请输入验证码"
+            />
+            <button type="button" id="getCodeBtn" disabled>获取验证码</button>
+          </div>
+        </div>
+        <div id="userIdDisplay" class="user-id-display">当前识别码: {{ userId }}</div>
+        <button type="submit" id="loginBtn">登录</button>
+      </form>
+    </div>
+
+    <script>
+      const phoneInput = document.getElementById("phone");
+      const verificationCodeInput = document.getElementById("verificationCode");
+      const getCodeBtn = document.getElementById("getCodeBtn");
+      const loginBtn = document.getElementById("loginBtn");
+      const loginForm = document.getElementById("loginForm");
+      const toastContainer = document.getElementById("toastContainer");
+
+      // 通用 Toast 提示函数
+      function showToast(message, type = "info", duration = 3000) {
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+
+        // 触发显示动画
+        setTimeout(() => {
+          toast.classList.add("show");
+        }, 10);
+
+        // 自动隐藏
+        setTimeout(() => {
+          toast.classList.remove("show");
+          toast.classList.add("hide");
+          setTimeout(() => {
+            toastContainer.removeChild(toast);
+          }, 400);
+        }, duration);
+      }
+
+      phoneInput.addEventListener("input", function () {
+        getCodeBtn.disabled = this.value.length !== 11;
+        loginBtn.disabled = this.value.length !== 11 || verificationCodeInput.value === "";
+      });
+
+      verificationCodeInput.addEventListener("input", function () {
+        loginBtn.disabled = this.value === "" || phoneInput.value.length !== 11;
+      });
+
+      const devCode = mI();
+      const contentType = "application/x-www-form-urlencoded; charset=utf-8";
+
+      const captchaId = "a9d7b33f6daf81efea5e3dcea8d92bd7"; // ios
+      const product = "bind";
+      const source = "ios";
+      const version = "3.11.0";
+
+      window.initAlicom4(
+        {
+          captchaId: captchaId,
+          https: true,
+          product: product,
+        },
+        function (captcha) {
+          captcha
+            .onReady(function () {})
+            .onNextReady(function () {})
+            .onSuccess(function () {
+              var result = captcha.getValidate();
+              if (!result) {
+                return showToast("请完成验证", "warning");
+              }
+              result.captcha_id = captchaId;
+              const currentTimeStamp = Date.now();
+              $.ajax({
+                url: "https://dnabbs-api.yingxiong.com/user/getSmsCode",
+                type: "POST",
+                data: {
+                  isCaptcha: 1,
+                  mobile: phoneInput.value,
+                  vJson: JSON.stringify(result),
+                  timestamp: Date.now(),
+                },
+                headers: {
+                  devcode: devCode,
+                  source: source,
+                  version: version,
+                  "content-type": contentType,
+                },
+                success: (res) =>
+                  showToast(
+                    res.success ? "验证码已发送" : "验证码发送失败: " + res.msg,
+                    res.success ? "success" : "error",
+                  ),
+                error: () => showToast("请求出错，请检查网络连接", "error"),
+              });
+            })
+            .onFail(function (fail) {
+              console.log(fail);
+            })
+            .onError(function (error) {
+              console.log(error);
+            });
+
+          getCodeBtn.onclick = function () {
+            this.disabled = true;
+            let countdown = 60;
+            const originalText = this.textContent;
+
+            captcha.showCaptcha();
+
+            const timer = setInterval(() => {
+              this.textContent = `${countdown}秒后重试`;
+              countdown--;
+              if (countdown < 0) {
+                clearInterval(timer);
+                this.textContent = originalText;
+                this.disabled = false;
+                captcha.hideBox();
+              }
+            }, 1000);
+          };
+        },
+      );
+
+      loginForm.addEventListener("submit", function (e) {
+        const data = {
+          mobile: phoneInput.value,
+          code: verificationCodeInput.value,
+          auth: "{{ auth }}",
+          user_id: "{{ userId }}",
+        };
+        e.preventDefault();
+        $.ajax({
+          url: "{{ server_url }}/dna/login",
+          type: "POST",
+          data: JSON.stringify(data),
+          contentType: "application/json",
+          success: (res) => {
+            if (res.success) {
+              showToast("登录成功！正在跳转...", "success", 2000);
+              setTimeout(() => {
+                window.location.href = "https://github.com/tyql688/DNAUID";
+              }, 2000);
+            } else {
+              showToast("登录失败" + (res.msg ? ": " + res.msg : "，请重试"), "error");
+            }
+          },
+          error: () => showToast("登录失败，请重试", "error"),
+        });
+      });
+
+      function loadBackgroundImage() {
+        const img = new Image();
+        img.onload = function () {
+          document.body.style.backgroundImage = `url(${img.src})`;
+          document.body.classList.add("bg-loaded");
+        };
+        img.src = "https://herobox-img.yingxiong.com/post/1748784746036602530.jpg";
+      }
+
+      window.addEventListener("load", loadBackgroundImage);
+
+      function mI() {
+        let id = localStorage.getItem("s_uuid");
+        if (!id) {
+          id = crypto.randomUUID();
+          localStorage.setItem("s_uuid", id);
+        }
+        return id;
+      }
+    </script>
+  </body>
+</html>
