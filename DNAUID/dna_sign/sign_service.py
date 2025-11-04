@@ -87,21 +87,21 @@ class SignService:
             return True
 
         # 二次检查
-        res = await dna_api.have_sign_in(self.token, self.dev_code)
-        have_game_sign = True  # game
-        have_bbs_sign = True  # bbs
-        if res.is_success and res.data and isinstance(res.data, dict):
-            have_game_sign = res.data.get("haveRoleSignIn", False)
-            have_bbs_sign = res.data.get("haveSignIn", False)
+        # res = await dna_api.have_sign_in(self.token, self.dev_code)
+        # have_game_sign = True  # game
+        # have_bbs_sign = True  # bbs
+        # if res.is_success and res.data and isinstance(res.data, dict):
+        #     have_game_sign = res.data.get("haveRoleSignIn", False)
+        #     have_bbs_sign = res.data.get("haveSignIn", False)
 
-        if have_game_sign:
-            self.msg_temp["signed"] = "skip"
-            self.dna_sign.game_sign = DNASignStatus.GAME_SIGN
-        if have_bbs_sign:
-            self.dna_sign.bbs_sign = DNASignStatus.BBS_SIGN
+        # if have_game_sign:
+        #     self.msg_temp["signed"] = "skip"
+        #     self.dna_sign.game_sign = DNASignStatus.GAME_SIGN
+        # if have_bbs_sign:
+        #     self.dna_sign.bbs_sign = DNASignStatus.BBS_SIGN
 
-        if self.msg_temp["signed"] and self.msg_temp["bbs_signed"]:
-            return True
+        # if self.msg_temp["signed"] and self.msg_temp["bbs_signed"]:
+        #     return True
         return False
 
     async def token_check(self):
@@ -120,6 +120,11 @@ class SignService:
             return True
 
         calendar_sign = DNACalendarSignResponse.model_validate(res.data)
+        if calendar_sign.todaySignin:
+            self.msg_temp["signed"] = "skip"
+            self.dna_sign.game_sign = DNASignStatus.GAME_SIGN
+            return
+
         today_sign_award = calendar_sign.dayAward[calendar_sign.signinTime]
 
         # 开始签到
@@ -129,7 +134,7 @@ class SignService:
         if res.is_success:
             self.msg_temp["signed"] = True
             self.dna_sign.game_sign = DNASignStatus.GAME_SIGN
-        elif res.code == 10000:
+        elif res.code == 711:
             # 已签到
             self.msg_temp["signed"] = "skip"
             self.dna_sign.game_sign = DNASignStatus.GAME_SIGN
