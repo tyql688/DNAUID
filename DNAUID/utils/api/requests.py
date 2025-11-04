@@ -9,13 +9,9 @@ from gsuid_core.logger import logger
 
 from ..constants.constants import DNA_GAME_ID
 from ..utils import timed_async_cache
-from .api import GET_RSA_PUBLIC_KEY_URL, LOGIN_URL
+from .api import GET_RSA_PUBLIC_KEY_URL, LOGIN_URL, ROLE_LIST_URL
 from .request_util import DNAApiResp, RespCode, get_base_header, is_h5
-from .sign import (
-    build_signature,
-    get_dev_code,
-    rsa_encrypt,
-)
+from .sign import build_signature, get_dev_code, rsa_encrypt
 
 
 class DNAApi:
@@ -57,6 +53,11 @@ class DNAApi:
 
         return await self._dna_request(LOGIN_URL, "POST", header, data=data)
 
+    async def get_role_list(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        return await self._dna_request(ROLE_LIST_URL, "POST", headers)
+
     async def _dna_request(
         self,
         url: str,
@@ -93,9 +94,7 @@ class DNAApi:
                             }
                         if isinstance(raw_res, dict):
                             try:
-                                raw_res["data"] = json.loads(
-                                    raw_res.get("data", "")
-                                )
+                                raw_res["data"] = json.loads(raw_res.get("data", ""))
                             except Exception:
                                 pass
 

@@ -3,6 +3,7 @@ from typing import Dict
 from gsuid_core.utils.plugins_config.models import (
     GSC,
     GsBoolConfig,
+    GsIntConfig,
     GsStrConfig,
 )
 
@@ -31,5 +32,8 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "开启后，登录链接变为转发消息",
         "开启后，登录链接变为转发消息",
         False,
+    ),
+    "MaxBindNum": GsIntConfig(
+        "绑定UID限制数量（未登录）", "绑定UID限制数量（未登录）", 2, 100
     ),
 }

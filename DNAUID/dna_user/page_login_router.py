@@ -1,5 +1,4 @@
 import asyncio
-import uuid
 from pathlib import Path
 from typing import Optional, Union
 
@@ -16,10 +15,9 @@ from gsuid_core.utils.cookie_manager.qrlogin import get_qrcode_base64
 from gsuid_core.web_app import app
 
 from ..dna_config.dna_config import DNAConfig
-from ..utils import TimedCache, dna_api, get_public_ip
+from ..utils import TimedCache, get_public_ip
 from ..utils.msgs.notify import (
     dna_code_login_fail,
-    dna_login_success,
     dna_login_timeout,
     send_dna_notify,
 )
@@ -29,6 +27,7 @@ from .login_helps import (
     is_valid_chinese_phone_number,
     is_validate_code,
 )
+from .login_service import DNALoginService
 
 cache = TimedCache(timeout=600, maxsize=10)
 
@@ -77,9 +76,7 @@ async def send_login(bot: Bot, ev: Event, url: str):
         im = [
             f"[二重螺旋] 您的id为【{ev.user_id}】\n",
             "请扫描下方二维码获取登录地址，并复制地址到浏览器打开\n",
-            MessageSegment.image(
-                await get_qrcode_base64(url, path, ev.bot_id)
-            ),
+            MessageSegment.image(await get_qrcode_base64(url, path, ev.bot_id)),
         ]
 
         if DNAConfig.get_config("DNALoginForward").data:
@@ -166,12 +163,9 @@ async def code_login(bot: Bot, ev: Event, text: str, isPage=False):
         else:
             return await send_dna_notify(bot, ev, "无效手机号或验证码")
 
-    dev_code = str(uuid.uuid4()).upper()
-    result = await dna_api.login(phone_number, code, dev_code)
-    if not result.success:
-        return await send_dna_notify(bot, ev, result.throw_msg())
-
-    return await dna_login_success(bot, ev)
+    login_service = DNALoginService(bot, ev)
+    login_result = await login_service.dna_login(mobile=phone_number, code=code)
+    await send_dna_notify(bot, ev, login_result)
 
 
 @app.get("/dna/i/{auth}")
