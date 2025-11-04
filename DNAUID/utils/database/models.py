@@ -1,15 +1,38 @@
-from typing import Any, Dict, List, Optional, Type, TypeVar
+import asyncio
+import functools
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
+from pydantic import BaseModel
 from sqlalchemy import delete, null, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import and_, or_
 from sqlmodel import Field, col, select
 
-from gsuid_core.utils.database.base_models import Bind, User, with_session
+from gsuid_core.utils.database.base_models import (
+    BaseIDModel,
+    Bind,
+    User,
+    with_session,
+)
 from gsuid_core.webconsole.mount_app import GsAdminModel, PageSchema, site
+
+from ..utils import get_today_date
 
 T_DNABind = TypeVar("T_DNABind", bound="DNABind")
 T_DNAUser = TypeVar("T_DNAUser", bound="DNAUser")
+T_DNASign = TypeVar("T_DNASign", bound="DNASign")
+
+
+_DB_WRITE_LOCK = asyncio.Lock()
+
+
+def with_lock(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        async with _DB_WRITE_LOCK:
+            return await func(*args, **kwargs)
+
+    return wrapper
 
 
 class DNABind(Bind, table=True):
@@ -129,6 +152,22 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
+    async def select_dna_users(
+        cls: Type[T_DNAUser],
+        session: AsyncSession,
+        user_id: str,
+        bot_id: str,
+    ) -> List[T_DNAUser]:
+        sql = select(cls).where(
+            cls.user_id == user_id,
+            cls.bot_id == bot_id,
+        )
+        result = await session.execute(sql)
+        data = result.scalars().all()
+        return list(data) if data else []
+
+    @classmethod
+    @with_session
     async def select_user_cookie_uids(
         cls: Type[T_DNAUser],
         session: AsyncSession,
@@ -230,6 +269,156 @@ class DNAUser(User, table=True):
         return result.rowcount
 
 
+class DNASignData(BaseModel):
+    uid: str  # 二重螺旋UID
+    date: Optional[str] = None  # 签到日期
+    game_sign: Optional[int] = None  # 游戏签到
+    bbs_sign: Optional[int] = None  # 社区签到
+    bbs_detail: Optional[int] = None  # 社区浏览 3次
+    bbs_like: Optional[int] = None  # 社区点赞 5次
+    bbs_share: Optional[int] = None  # 社区分享 1次
+    bbs_reply: Optional[int] = None  # 社区回复 5次
+
+    @classmethod
+    def build(cls, uid: str):
+        date = get_today_date()
+        return cls(uid=uid, date=date)
+
+    @classmethod
+    def build_game_sign(cls, uid: str):
+        return cls(uid=uid, game_sign=1)
+
+    @classmethod
+    def build_bbs_sign(
+        cls,
+        uid: str,
+    ):
+        return cls(
+            uid=uid,
+            bbs_sign=0,
+            bbs_detail=0,
+            bbs_like=0,
+            bbs_share=0,
+            bbs_reply=0,
+        )
+
+    @classmethod
+    def rebuild(cls, dna_sign: Union[T_DNASign, "DNASignData"]):
+        return cls(
+            uid=dna_sign.uid,
+            game_sign=dna_sign.game_sign,
+            bbs_sign=dna_sign.bbs_sign,
+            bbs_detail=dna_sign.bbs_detail,
+            bbs_like=dna_sign.bbs_like,
+            bbs_share=dna_sign.bbs_share,
+        )
+
+
+class DNASign(BaseIDModel, table=True):
+    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    uid: str = Field(title="鸣潮UID")
+    game_sign: int = Field(default=0, title="游戏签到")
+    bbs_sign: int = Field(default=0, title="社区签到")
+    bbs_detail: int = Field(default=0, title="社区浏览")
+    bbs_like: int = Field(default=0, title="社区点赞")
+    bbs_share: int = Field(default=0, title="社区分享")
+    bbs_reply: int = Field(default=0, title="社区回复")
+    date: str = Field(default=get_today_date(), title="签到日期")
+
+    @classmethod
+    async def _find_sign_record(
+        cls: Type[T_DNASign],
+        session: AsyncSession,
+        uid: str,
+        date: str,
+    ) -> Optional[T_DNASign]:
+        """查找指定UID和日期的签到记录（内部方法）"""
+        query = select(cls).where(cls.uid == uid).where(cls.date == date)
+        result = await session.execute(query)
+        return result.scalars().first()
+
+    @classmethod
+    @with_lock
+    @with_session
+    async def upsert_dna_sign(
+        cls: Type[T_DNASign],
+        session: AsyncSession,
+        dna_sign_data: DNASignData,
+    ) -> Optional[T_DNASign]:
+        """
+        插入或更新签到数据
+        返回更新后的记录或新插入的记录
+        """
+        if not dna_sign_data.uid:
+            return None
+
+        # 确保日期有值
+        dna_sign_data.date = dna_sign_data.date or get_today_date()
+
+        # 查询是否存在记录
+        record = await cls._find_sign_record(
+            session, dna_sign_data.uid, dna_sign_data.date
+        )
+
+        if record:
+            # 更新已有记录
+            for field in [
+                "game_sign",
+                "bbs_sign",
+                "bbs_detail",
+                "bbs_like",
+                "bbs_share",
+                "bbs_reply",
+            ]:
+                value = getattr(dna_sign_data, field)
+                if value:
+                    setattr(record, field, value)
+            result = record
+        else:
+            # 添加新记录 - 直接从Pydantic模型创建SQLModel实例
+            result = cls(**dna_sign_data.model_dump())
+            session.add(result)
+
+        return result
+
+    @classmethod
+    @with_session
+    async def get_sign_data(
+        cls: Type[T_DNASign],
+        session: AsyncSession,
+        uid: str,
+        date: Optional[str] = None,
+    ) -> Optional[T_DNASign]:
+        """根据UID和日期查询签到数据"""
+        date = date or get_today_date()
+        return await cls._find_sign_record(session, uid, date)
+
+    @classmethod
+    @with_session
+    async def get_all_sign_data_by_date(
+        cls: Type[T_DNASign],
+        session: AsyncSession,
+        date: Optional[str] = None,
+    ) -> List[T_DNASign]:
+        """根据日期查询所有签到数据"""
+        actual_date = date or get_today_date()
+        sql = select(cls).where(cls.date == actual_date)
+        result = await session.execute(sql)
+        return list(result.scalars().all())
+
+    @classmethod
+    @with_lock
+    @with_session
+    async def clear_sign_record(
+        cls: Type[T_DNASign],
+        session: AsyncSession,
+        date: str,
+    ):
+        """清除签到记录"""
+        sql = delete(cls).where(getattr(cls, "date") <= date)
+        await session.execute(sql)
+
+
 @site.register_admin
 class DNABindAdmin(GsAdminModel):
     pk_name = "id"
@@ -252,3 +441,58 @@ class DNAUserAdmin(GsAdminModel):
 
     # 配置管理模型
     model = DNAUser
+
+
+@site.register_admin
+class DNASignAdmin(GsAdminModel):
+    pk_name = "id"
+    page_schema = PageSchema(
+        label="二重螺旋签到管理",
+        icon="fa fa-check",
+    )  # type: ignore
+
+    # 配置管理模型
+    model = DNASign
+
+
+class DNASignStatus(int):
+    GAME_SIGN = 1  # 游戏签到
+    BBS_SIGN = 1  # 社区签到
+    BBS_DETAIL = 3  # 社区浏览
+    BBS_LIKE = 5  # 社区点赞
+    BBS_SHARE = 1  # 社区分享
+    BBS_REPLY = 5  # 社区回复
+
+    @classmethod
+    def game_sign_complete(cls, dna_sign: DNASign):
+        return cls.GAME_SIGN == dna_sign.game_sign
+
+    @classmethod
+    def bbs_sign_complete(
+        cls,
+        dna_sign: DNASign,
+        check_config: List[str] = [
+            "bbs_sign",
+            "bbs_detail",
+            "bbs_like",
+            "bbs_share",
+            "bbs_reply",
+        ],
+    ):
+        for config in check_config:
+            if config == "bbs_sign":
+                if cls.BBS_SIGN != dna_sign.bbs_sign:
+                    return False
+            elif config == "bbs_detail":
+                if cls.BBS_DETAIL != dna_sign.bbs_detail:
+                    return False
+            elif config == "bbs_like":
+                if cls.BBS_LIKE != dna_sign.bbs_like:
+                    return False
+            elif config == "bbs_share":
+                if cls.BBS_SHARE != dna_sign.bbs_share:
+                    return False
+            elif config == "bbs_reply":
+                if cls.BBS_REPLY != dna_sign.bbs_reply:
+                    return False
+        return True

@@ -9,7 +9,16 @@ from gsuid_core.logger import logger
 
 from ..constants.constants import DNA_GAME_ID
 from ..utils import timed_async_cache
-from .api import GET_RSA_PUBLIC_KEY_URL, LOGIN_URL, ROLE_LIST_URL
+from .api import (
+    BBS_SIGN_URL,
+    GAME_SIGN_URL,
+    GET_RSA_PUBLIC_KEY_URL,
+    HAVE_SIGN_IN_URL,
+    LOGIN_LOG_URL,
+    LOGIN_URL,
+    ROLE_LIST_URL,
+    SIGN_CALENDAR_URL,
+)
 from .request_util import DNAApiResp, RespCode, get_base_header, is_h5
 from .sign import build_signature, get_dev_code, rsa_encrypt
 
@@ -53,10 +62,45 @@ class DNAApi:
 
         return await self._dna_request(LOGIN_URL, "POST", header, data=data)
 
-    async def get_role_list(self, token: str, dev_code: Optional[str] = None):
+    async def login_log(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        return await self._dna_request(LOGIN_LOG_URL, "POST", headers)
+
+    async def get_role_list(self, token: str, dev_code: str):
         headers = await get_base_header(dev_code=dev_code)
         headers["token"] = token
         return await self._dna_request(ROLE_LIST_URL, "POST", headers)
+
+    async def have_sign_in(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        data = {"gameId": DNA_GAME_ID}
+        return await self._dna_request(HAVE_SIGN_IN_URL, "POST", headers, data=data)
+
+    async def bbs_sign(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        data = {"gameId": DNA_GAME_ID}
+        return await self._dna_request(BBS_SIGN_URL, "POST", headers, data=data)
+
+    async def sign_calendar(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        data = {"gameId": DNA_GAME_ID}
+        return await self._dna_request(SIGN_CALENDAR_URL, "POST", headers, data=data)
+
+    async def game_sign(
+        self, token: str, day_award_id: int, period: int, dev_code: Optional[str] = None
+    ):
+        headers = await get_base_header(dev_code=dev_code)
+        headers["token"] = token
+        data = {
+            "dayAwardId": day_award_id,
+            "periodId": period,
+            "signinType": 1,
+        }
+        return await self._dna_request(GAME_SIGN_URL, "POST", headers, data=data)
 
     async def _dna_request(
         self,

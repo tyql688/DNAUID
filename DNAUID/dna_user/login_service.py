@@ -24,7 +24,7 @@ class DNALoginService:
         if not dev_code:
             dev_code = await self.get_dev_code()
         result = await dna_api.login(mobile, code, dev_code)
-        if not result.success:
+        if not result.is_success:
             return result.throw_msg()
         login_response = DNALoginResponse.model_validate(result.data)
 
@@ -32,7 +32,7 @@ class DNALoginService:
             return complete_error_msg
 
         role_list_response = await dna_api.get_role_list(login_response.token, dev_code)
-        if not role_list_response.success:
+        if not role_list_response.is_success:
             return role_list_response.throw_msg()
         role_list = DNARoleListResponse.model_validate(role_list_response.data)
 

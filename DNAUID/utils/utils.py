@@ -2,6 +2,7 @@ import asyncio
 import functools
 import time
 from collections import OrderedDict
+from datetime import datetime, timedelta
 
 import httpx
 
@@ -91,9 +92,7 @@ async def get_public_ip(host="127.127.127.127"):
     # 尝试从 kurobbs 获取 IP 地址
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                "https://event.kurobbs.com/event/ip", timeout=4
-            )
+            r = await client.get("https://event.kurobbs.com/event/ip", timeout=4)
             ip = r.text
             return ip
     except Exception:
@@ -102,9 +101,7 @@ async def get_public_ip(host="127.127.127.127"):
     # 尝试从 ipify 获取 IP 地址
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                "https://api.ipify.org/?format=json", timeout=4
-            )
+            r = await client.get("https://api.ipify.org/?format=json", timeout=4)
             ip = r.json()["ip"]
             return ip
     except:  # noqa:E722, B001
@@ -120,3 +117,18 @@ async def get_public_ip(host="127.127.127.127"):
         pass
 
     return host
+
+
+def get_today_date():
+    today = datetime.now()
+    return today.strftime("%Y-%m-%d")
+
+
+def get_yesterday_date():
+    yesterday = datetime.now() - timedelta(days=1)
+    return yesterday.strftime("%Y-%m-%d")
+
+
+def get_two_days_ago_date():
+    two_days_ago = datetime.now() - timedelta(days=2)
+    return two_days_ago.strftime("%Y-%m-%d")

@@ -45,3 +45,22 @@ class DNARole(BaseModel):
 
 class DNARoleListResponse(BaseModel):
     roles: List[DNARole] = Field(description="roles")
+
+
+class DNADayAward(BaseModel):
+    gameId: int = Field(description="gameId")
+    periodId: int = Field(description="periodId")
+    iconUrl: str = Field(description="iconUrl")
+    id: int = Field(description="id")
+    dayInPeriod: int = Field(description="dayInPeriod")
+    updateTime: int = Field(description="updateTime")
+    awardNum: int = Field(description="awardNum")
+    thirdProductId: str = Field(description="thirdProductId")
+    createTime: int = Field(description="createTime")
+    awardName: str = Field(description="awardName")
+
+
+class DNACalendarSignResponse(BaseModel):
+    todaySignin: bool = Field(description="todaySignin")
+    dayAward: List[DNADayAward] = Field(description="dayAward")
+    signinTime: int = Field(description="signinTime")

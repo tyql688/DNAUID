@@ -10,6 +10,7 @@ sys.path.append(str(MAIN_PATH))
 
 # 配置文件
 CONFIG_PATH = MAIN_PATH / "config.json"
+SIGN_CONFIG_PATH = MAIN_PATH / "sign_config.json"
 
 
 def init_dir():
