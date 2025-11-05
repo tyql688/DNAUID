@@ -86,12 +86,11 @@ class SignService:
         if self.msg_temp["signed"] != "forbidden":
             msg_list.append(f"签到状态: {SIGN_STATUS[self.msg_temp['signed']]}")
         if self.msg_temp["bbs_signed"] != "forbidden":
-            msg_list.append(f"社区签到: {SIGN_STATUS[self.msg_temp['bbs_signed']]}")
-
             if self.msg_temp["bbs_signed"] != "skip":
+                msg_list.append("社区任务:")
                 if BBSMarkName.BBS_SIGN in check_config:
                     msg_list.append(
-                        f"社区签到: {SIGN_STATUS[self.bbs_states[BBSMarkName.BBS_SIGN]]}"
+                        f"签到: {SIGN_STATUS[self.bbs_states[BBSMarkName.BBS_SIGN]]}"
                     )
                 if BBSMarkName.BBS_DETAIL in check_config:
                     msg_list.append(
@@ -109,6 +108,8 @@ class SignService:
                     msg_list.append(
                         f"回复: {SIGN_STATUS[self.bbs_states[BBSMarkName.BBS_REPLY]]}"
                     )
+            else:
+                msg_list.append(f"社区签到: {SIGN_STATUS[self.msg_temp['bbs_signed']]}")
 
         if self.error_msg:
             msg_list.append(f"错误信息: {self.error_msg}")
