@@ -338,7 +338,7 @@
         loginBtn.disabled = this.value === "" || phoneInput.value.length !== 11;
       });
 
-      const devCode = mI();
+      const devCode = generateUUID();
       const contentType = "application/x-www-form-urlencoded; charset=utf-8";
 
       const captchaId = "a9d7b33f6daf81efea5e3dcea8d92bd7"; // ios
@@ -407,7 +407,7 @@
                 clearInterval(timer);
                 this.textContent = originalText;
                 this.disabled = false;
-                captcha.hideBox();
+                captcha.destroy();
               }
             }, 1000);
           };
@@ -429,7 +429,7 @@
           contentType: "application/json",
           success: (res) => {
             if (res.success) {
-              showToast("登录成功！正在跳转...", "success", 2000);
+              showToast("正在尝试登录...正在跳转...", "success", 2000);
               setTimeout(() => {
                 window.location.href = "https://github.com/tyql688/DNAUID";
               }, 2000);
@@ -452,25 +452,19 @@
 
       window.addEventListener("load", loadBackgroundImage);
 
-        function mI() {
+      function generateUUID() {
         let id = localStorage.getItem("s_uuid");
         if (!id) {
           if (window.crypto && window.crypto.getRandomValues) {
             id = ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) =>
-              (
-                c ^
-                (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))
-              ).toString(16)
+              (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16),
             );
           } else {
-            id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-              /[xy]/g,
-              function (c) {
-                var r = (Math.random() * 16) | 0;
-                var v = c === "x" ? r : (r & 0x3) | 0x8;
-                return v.toString(16);
-              }
-            );
+            id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+              var r = (Math.random() * 16) | 0;
+              var v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
           }
           localStorage.setItem("s_uuid", id);
         }

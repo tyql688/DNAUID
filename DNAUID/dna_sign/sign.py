@@ -34,6 +34,10 @@ async def manual_sign(bot: Bot, ev: Event):
             result_msgs.append(ss.turn_msg())
             continue
 
+        if not await ss.token_check():
+            expire_uids.append(dna_user.uid)
+            continue
+
         await ss.do_sign()
         await ss.do_bbs_sign()
 

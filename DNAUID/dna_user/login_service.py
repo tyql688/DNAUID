@@ -5,11 +5,12 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
 from ..utils import dna_api
-from ..utils.api.model import DNALoginResponse, DNARoleListResponse
+from ..utils.api.model import DNALoginRes, DNARoleListRes
 from ..utils.constants.constants import DNA_GAME_ID
 from ..utils.database.models import DNABind, DNAUser
 
 complete_error_msg = "您尚未注册二重螺旋账号，请先在【皎皎角】进行角色绑定"
+role_error_msg = "未找到二重螺旋角色，请在皎皎角注册账号后重新登录"
 
 
 class DNALoginService:
@@ -26,7 +27,7 @@ class DNALoginService:
         result = await dna_api.login(mobile, code, dev_code)
         if not result.is_success:
             return result.throw_msg()
-        login_response = DNALoginResponse.model_validate(result.data)
+        login_response = DNALoginRes.model_validate(result.data)
 
         if login_response.isComplete == 0:
             return complete_error_msg
@@ -34,7 +35,9 @@ class DNALoginService:
         role_list_response = await dna_api.get_role_list(login_response.token, dev_code)
         if not role_list_response.is_success:
             return role_list_response.throw_msg()
-        role_list = DNARoleListResponse.model_validate(role_list_response.data)
+        if not role_list_response.data:
+            return role_error_msg
+        role_list = DNARoleListRes.model_validate(role_list_response.data)
 
         ev = self.ev
         user_id = ev.user_id

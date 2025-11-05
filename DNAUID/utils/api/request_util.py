@@ -2,12 +2,7 @@ import copy
 from enum import IntEnum
 from typing import Generic, Optional, TypeVar, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    computed_field,
-)
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8"
 
@@ -31,6 +26,7 @@ async def get_base_header(
     is_need_origin: bool = False,
     is_need_refer: bool = False,
     is_h5: bool = False,
+    token: Optional[str] = None,
 ):
     """默认获取ios头"""
     header = copy.deepcopy(h5_base_header if is_h5 else ios_base_header)
@@ -40,6 +36,8 @@ async def get_base_header(
         header["origin"] = "https://dnabbs.yingxiong.com"
     if is_need_refer:
         header["refer"] = "https://dnabbs.yingxiong.com/"
+    if token:
+        header["token"] = token
     return header
 
 

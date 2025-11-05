@@ -2,13 +2,15 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from ..constants.sign_bbs_mark import BBSMarkName
+
 
 class UserGame(BaseModel):
     gameId: int = Field(description="gameId", default=268)
     gameName: str = Field(description="gameName", default="二重螺旋")
 
 
-class DNALoginResponse(BaseModel):
+class DNALoginRes(BaseModel):
     applyCancel: Optional[int] = Field(description="applyCancel", default=0)
     gender: Optional[int] = Field(description="gender", default=0)
     signature: Optional[str] = Field(description="signature", default="")
@@ -43,7 +45,7 @@ class DNARole(BaseModel):
     gameId: int = Field(description="gameId")
 
 
-class DNARoleListResponse(BaseModel):
+class DNARoleListRes(BaseModel):
     roles: List[DNARole] = Field(description="roles")
 
 
@@ -60,7 +62,31 @@ class DNADayAward(BaseModel):
     awardName: str = Field(description="awardName")
 
 
-class DNACalendarSignResponse(BaseModel):
+class DNACalendarSignRes(BaseModel):
     todaySignin: bool = Field(description="todaySignin")
     dayAward: List[DNADayAward] = Field(description="dayAward")
     signinTime: int = Field(description="signinTime")
+
+
+class DNABBSTask(BaseModel):
+    remark: str = Field(description="备注")
+    completeTimes: int = Field(description="完成次数")
+    times: int = Field(description="需要次数")
+    skipType: int = Field(description="skipType")
+    gainExp: int = Field(description="获取经验")
+    process: float = Field(description="进度")
+    gainGold: int = Field(description="获取金币")
+
+    # 添加markName字段
+    markName: Optional[str] = Field(default=None, description="任务标识名")
+
+    def __init__(self, **data):
+        remark = data.get("remark", "")
+        data["markName"] = BBSMarkName.get_mark_name(remark)
+        super().__init__(**data)
+
+
+class DNATaskProcessRes(BaseModel):
+
+    dailyTask: List[DNABBSTask] = Field(description="dailyTask")
+    # growTask: List[DNABBSTask] = Field(description="growTask")

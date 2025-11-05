@@ -1,8 +1,7 @@
 import asyncio
 import functools
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
-from pydantic import BaseModel
 from sqlalchemy import delete, null, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import and_, or_
@@ -269,51 +268,6 @@ class DNAUser(User, table=True):
         return result.rowcount
 
 
-class DNASignData(BaseModel):
-    uid: str  # 二重螺旋UID
-    date: Optional[str] = None  # 签到日期
-    game_sign: Optional[int] = None  # 游戏签到
-    bbs_sign: Optional[int] = None  # 社区签到
-    bbs_detail: Optional[int] = None  # 社区浏览 3次
-    bbs_like: Optional[int] = None  # 社区点赞 5次
-    bbs_share: Optional[int] = None  # 社区分享 1次
-    bbs_reply: Optional[int] = None  # 社区回复 5次
-
-    @classmethod
-    def build(cls, uid: str):
-        date = get_today_date()
-        return cls(uid=uid, date=date)
-
-    @classmethod
-    def build_game_sign(cls, uid: str):
-        return cls(uid=uid, game_sign=1)
-
-    @classmethod
-    def build_bbs_sign(
-        cls,
-        uid: str,
-    ):
-        return cls(
-            uid=uid,
-            bbs_sign=0,
-            bbs_detail=0,
-            bbs_like=0,
-            bbs_share=0,
-            bbs_reply=0,
-        )
-
-    @classmethod
-    def rebuild(cls, dna_sign: Union[T_DNASign, "DNASignData"]):
-        return cls(
-            uid=dna_sign.uid,
-            game_sign=dna_sign.game_sign,
-            bbs_sign=dna_sign.bbs_sign,
-            bbs_detail=dna_sign.bbs_detail,
-            bbs_like=dna_sign.bbs_like,
-            bbs_share=dna_sign.bbs_share,
-        )
-
-
 class DNASign(BaseIDModel, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
     uid: str = Field(title="鸣潮UID")
@@ -324,6 +278,11 @@ class DNASign(BaseIDModel, table=True):
     bbs_share: int = Field(default=0, title="社区分享")
     bbs_reply: int = Field(default=0, title="社区回复")
     date: str = Field(default=get_today_date(), title="签到日期")
+
+    @classmethod
+    def build(cls, uid: str):
+        date = get_today_date()
+        return cls(uid=uid, date=date)
 
     @classmethod
     async def _find_sign_record(
@@ -343,7 +302,7 @@ class DNASign(BaseIDModel, table=True):
     async def upsert_dna_sign(
         cls: Type[T_DNASign],
         session: AsyncSession,
-        dna_sign_data: DNASignData,
+        dna_sign_data: T_DNASign,
     ) -> Optional[T_DNASign]:
         """
         插入或更新签到数据
@@ -453,46 +412,3 @@ class DNASignAdmin(GsAdminModel):
 
     # 配置管理模型
     model = DNASign
-
-
-class DNASignStatus(int):
-    GAME_SIGN = 1  # 游戏签到
-    BBS_SIGN = 1  # 社区签到
-    BBS_DETAIL = 3  # 社区浏览
-    BBS_LIKE = 5  # 社区点赞
-    BBS_SHARE = 1  # 社区分享
-    BBS_REPLY = 5  # 社区回复
-
-    @classmethod
-    def game_sign_complete(cls, dna_sign: DNASign):
-        return cls.GAME_SIGN == dna_sign.game_sign
-
-    @classmethod
-    def bbs_sign_complete(
-        cls,
-        dna_sign: DNASign,
-        check_config: List[str] = [
-            "bbs_sign",
-            "bbs_detail",
-            "bbs_like",
-            "bbs_share",
-            "bbs_reply",
-        ],
-    ):
-        for config in check_config:
-            if config == "bbs_sign":
-                if cls.BBS_SIGN != dna_sign.bbs_sign:
-                    return False
-            elif config == "bbs_detail":
-                if cls.BBS_DETAIL != dna_sign.bbs_detail:
-                    return False
-            elif config == "bbs_like":
-                if cls.BBS_LIKE != dna_sign.bbs_like:
-                    return False
-            elif config == "bbs_share":
-                if cls.BBS_SHARE != dna_sign.bbs_share:
-                    return False
-            elif config == "bbs_reply":
-                if cls.BBS_REPLY != dna_sign.bbs_reply:
-                    return False
-        return True

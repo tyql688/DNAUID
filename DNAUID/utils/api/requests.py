@@ -12,11 +12,17 @@ from ..utils import timed_async_cache
 from .api import (
     BBS_SIGN_URL,
     GAME_SIGN_URL,
+    GET_POST_DETAIL_URL,
+    GET_POST_LIST_URL,
     GET_RSA_PUBLIC_KEY_URL,
+    GET_TASK_PROCESS_URL,
     HAVE_SIGN_IN_URL,
+    LIKE_POST_URL,
     LOGIN_LOG_URL,
     LOGIN_URL,
+    REPLY_POST_URL,
     ROLE_LIST_URL,
+    SHARE_POST_URL,
     SIGN_CALENDAR_URL,
 )
 from .request_util import DNAApiResp, RespCode, get_base_header, is_h5
@@ -63,44 +69,172 @@ class DNAApi:
         return await self._dna_request(LOGIN_URL, "POST", header, data=data)
 
     async def login_log(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
+        headers = await get_base_header(dev_code=dev_code, token=token)
         return await self._dna_request(LOGIN_LOG_URL, "POST", headers)
 
     async def get_role_list(self, token: str, dev_code: str):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
+        headers = await get_base_header(dev_code=dev_code, token=token)
         return await self._dna_request(ROLE_LIST_URL, "POST", headers)
 
     async def have_sign_in(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
+        headers = await get_base_header(dev_code=dev_code, token=token)
         data = {"gameId": DNA_GAME_ID}
         return await self._dna_request(HAVE_SIGN_IN_URL, "POST", headers, data=data)
 
-    async def bbs_sign(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
-        data = {"gameId": DNA_GAME_ID}
-        return await self._dna_request(BBS_SIGN_URL, "POST", headers, data=data)
-
     async def sign_calendar(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
+        headers = await get_base_header(dev_code=dev_code, token=token)
         data = {"gameId": DNA_GAME_ID}
         return await self._dna_request(SIGN_CALENDAR_URL, "POST", headers, data=data)
 
     async def game_sign(
         self, token: str, day_award_id: int, period: int, dev_code: Optional[str] = None
     ):
-        headers = await get_base_header(dev_code=dev_code)
-        headers["token"] = token
+        headers = await get_base_header(dev_code=dev_code, token=token)
         data = {
             "dayAwardId": day_award_id,
             "periodId": period,
             "signinType": 1,
         }
         return await self._dna_request(GAME_SIGN_URL, "POST", headers, data=data)
+
+    async def bbs_sign(self, token: str, dev_code: Optional[str] = None):
+        headers = await get_base_header(dev_code=dev_code, token=token)
+        data = {"gameId": DNA_GAME_ID}
+        return await self._dna_request(BBS_SIGN_URL, "POST", headers, data=data)
+
+    async def get_task_process(self, token: str, dev_code: Optional[str] = None):
+        """获取任务进度"""
+        headers = await get_base_header(dev_code=dev_code, token=token)
+        data = {"gameId": DNA_GAME_ID}
+        try:
+            return await self._dna_request(
+                GET_TASK_PROCESS_URL, "POST", headers, data=data
+            )
+        except Exception as e:
+            logger.exception("get_task_process", e)
+            return DNAApiResp[Any].err("请求皎皎角服务失败")
+
+    @timed_async_cache(
+        3600,
+        lambda x: x and isinstance(x, DNAApiResp) and x.is_success,
+    )
+    async def get_post_list(self, token: str, dev_code: Optional[str] = None):
+        """获取帖子列表"""
+        headers = await get_base_header(dev_code=dev_code, token=token)
+        data = {
+            "forumId": 46,  # 全部
+            "gameId": DNA_GAME_ID,
+            "pageIndex": 1,
+            "pageSize": 20,
+            "searchType": 1,  # 1:最新 2:热门
+            "timeType": 0,
+        }
+        try:
+            return await self._dna_request(
+                GET_POST_LIST_URL, "POST", headers, data=data
+            )
+        except Exception as e:
+            logger.exception("get_post_list", e)
+            return DNAApiResp[Any].err("请求皎皎角服务失败")
+
+    async def get_post_detail(
+        self, token: str, post_id: str, dev_code: Optional[str] = None
+    ):
+        """获取帖子详情"""
+        header = await get_base_header(dev_code=dev_code, token=token)
+        data = {"postId": post_id}
+        try:
+            return await self._dna_request(
+                GET_POST_DETAIL_URL, "POST", header, data=data
+            )
+        except Exception as e:
+            logger.exception("get_post_detail", e)
+            return DNAApiResp[Any].err("请求皎皎角服务失败")
+
+    async def do_like(
+        self,
+        token: str,
+        post: Dict[str, Any],
+        dev_code: Optional[str] = None,
+    ):
+        """点赞帖子"""
+        header = await get_base_header(dev_code=dev_code, token=token)
+        data = {
+            "forumId": post.get("gameForumId"),
+            "gameId": DNA_GAME_ID,
+            "likeType": "1",
+            "operateType": "1",
+            "postCommentId": "",
+            "postCommentReplyId": "",
+            "postId": post.get("postId"),
+            "postType": post.get("postType"),
+            "toUserId": post.get("userId"),
+        }
+        try:
+            return await self._dna_request(LIKE_POST_URL, "POST", header, data=data)
+        except Exception as e:
+            logger.exception("do_like", e)
+            return DNAApiResp[Any].err("请求皎皎角服务失败")
+
+    async def do_share(self, token: str, dev_code: Optional[str] = None):
+        """分享帖子任务"""
+        header = await get_base_header(dev_code=dev_code, token=token)
+        data = {"gameId": DNA_GAME_ID}
+        try:
+            return await self._dna_request(SHARE_POST_URL, "POST", header, data=data)
+        except Exception as e:
+            logger.exception("do_share", e)
+            return DNAApiResp[Any].err("请求皎皎角服务失败")
+
+    async def do_reply(
+        self,
+        token: str,
+        post: Dict[str, Any],
+        content: str,
+        dev_code: Optional[str] = None,
+    ):
+        """回复帖子"""
+        content_json = json.dumps(
+            [
+                {
+                    "content": content,
+                    "contentType": "1",
+                    "imgHeight": 0,
+                    "imgWidth": 0,
+                    "url": "",
+                }
+            ]
+        )
+        payload = {
+            "postId": post.get("postId"),
+            "forumId": post.get("gameForumId", 47),
+            "postType": "1",
+            "content": content_json,
+        }
+
+        si = build_signature(payload)
+        payload.update(
+            {
+                "sign": si["s"],
+                "timestamp": si["t"],
+                "toUserId": post.get("userId"),
+            }
+        )
+        data = urlencode(payload)
+
+        rk = si["k"]
+        pk = await self.get_rsa_public_key()
+        ek = rsa_encrypt(rk, pk)
+        header = await get_base_header(
+            dev_code, token=token, is_need_origin=True, is_need_refer=True
+        )
+
+        if is_h5(header):
+            header.update({"k": ek})
+        else:
+            header.update({"rk": rk, "key": ek})
+
+        return await self._dna_request(REPLY_POST_URL, "POST", header, data=data)
 
     async def _dna_request(
         self,
