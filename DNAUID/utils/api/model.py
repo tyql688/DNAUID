@@ -62,10 +62,33 @@ class DNADayAward(BaseModel):
     awardName: str = Field(description="awardName")
 
 
+class DNACaSignPeriod(BaseModel):
+    gameId: int = Field(description="gameId")
+    retryCos: int = Field(description="retryCos")
+    endDate: int = Field(description="endDate")
+    id: int = Field(description="id")
+    startDate: int = Field(description="startDate")
+    retryTimes: int = Field(description="retryTimes")
+    overDays: int = Field(description="overDays")
+    createTime: int = Field(description="createTime")
+    name: str = Field(description="name")
+
+
+class DNACaSignRoleInfo(BaseModel):
+    headUrl: str = Field(description="headUrl")
+    roleId: str = Field(description="roleId")
+    roleName: str = Field(description="roleName")
+    level: int = Field(description="level")
+    roleBoundId: str = Field(description="roleBoundId")
+
+
 class DNACalendarSignRes(BaseModel):
     todaySignin: bool = Field(description="todaySignin")
+    userGoldNum: int = Field(description="userGoldNum")
     dayAward: List[DNADayAward] = Field(description="dayAward")
     signinTime: int = Field(description="signinTime")
+    period: DNACaSignPeriod = Field(description="period")
+    roleInfo: DNACaSignRoleInfo = Field(description="roleInfo")
 
 
 class DNABBSTask(BaseModel):

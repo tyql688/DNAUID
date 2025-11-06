@@ -12,10 +12,15 @@ sys.path.append(str(MAIN_PATH))
 CONFIG_PATH = MAIN_PATH / "config.json"
 SIGN_CONFIG_PATH = MAIN_PATH / "sign_config.json"
 
+# 其他的素材
+OTHER_PATH = MAIN_PATH / "other"
+SIGN_PATH = OTHER_PATH / "sign"
+
 
 def init_dir():
     for i in [
         MAIN_PATH,
+        SIGN_PATH,
     ]:
         i.mkdir(parents=True, exist_ok=True)
 

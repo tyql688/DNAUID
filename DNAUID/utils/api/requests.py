@@ -8,6 +8,7 @@ import aiohttp
 from gsuid_core.logger import logger
 
 from ..constants.constants import DNA_GAME_ID
+from ..database.models import DNAUser
 from ..utils import timed_async_cache
 from .api import (
     BBS_SIGN_URL,
@@ -31,6 +32,24 @@ from .sign import build_signature, get_dev_code, rsa_encrypt
 
 class DNAApi:
     ssl_verify = True
+
+    async def get_dna_user(
+        self, uid: str, user_id: str, bot_id: str
+    ) -> Optional[DNAUser]:
+        # 返回空串 表示绑定已失效
+        dna_user = await DNAUser.select_dna_user(uid, user_id, bot_id)
+        if not dna_user or not dna_user.cookie:
+            return
+
+        if dna_user.status == "无效":
+            return
+
+        login_log = await self.login_log(dna_user.cookie, dna_user.dev_code)
+        if not login_log.success:
+            await DNAUser.mark_cookie_invalid(uid, dna_user.cookie, "无效")
+            return
+
+        return dna_user
 
     @timed_async_cache(86400, lambda x: x and len(x) > 0)
     async def get_rsa_public_key(self) -> str:

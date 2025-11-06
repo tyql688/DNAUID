@@ -45,6 +45,8 @@ def get_check_config():
 
 
 class SignService:
+    ERROR_TIMES = 3
+
     def __init__(
         self,
         uid: str,
@@ -258,14 +260,24 @@ class SignService:
         if need_times <= 0:
             self.bbs_states[BBSMarkName.BBS_DETAIL] = "skip"
             return
-        choose_posts = random.sample(posts, min(len(posts), need_times))
-        for post in choose_posts:
+
+        error_times = 0
+        random.shuffle(posts)
+        for post in posts:
             post_id = post.get("postId")
             if not post_id:
                 continue
             res = await dna_api.get_post_detail(self.token, post_id, self.dev_code)
             if res and res.is_success:
                 self.dna_sign.bbs_detail += 1
+            else:
+                error_times += 1
+                if error_times >= self.ERROR_TIMES:
+                    self.error_msg = "❌ 社区任务：浏览帖子失败次数过多，请稍后重试"
+                    return
+
+            if self.dna_sign.bbs_detail >= dna_bbs_task.times:
+                break
 
             await asyncio.sleep(random.uniform(self.delay[0], self.delay[1]))
 
@@ -282,14 +294,24 @@ class SignService:
         if need_times <= 0:
             self.bbs_states[BBSMarkName.BBS_LIKE] = "skip"
             return
-        choose_posts = random.sample(posts, min(len(posts), need_times))
-        for post in choose_posts:
+
+        error_times = 0
+        random.shuffle(posts)
+        for post in posts:
             post_id = post.get("postId")
             if not post_id:
                 continue
             res = await dna_api.do_like(self.token, post, self.dev_code)
             if res.is_success:
                 self.dna_sign.bbs_like += 1
+            else:
+                error_times += 1
+                if error_times >= self.ERROR_TIMES:
+                    self.error_msg = "❌ 社区任务：帖子点赞失败次数过多，请稍后重试"
+                    return
+
+            if self.dna_sign.bbs_like >= dna_bbs_task.times:
+                break
 
             await asyncio.sleep(random.uniform(self.delay[0], self.delay[1]))
 
@@ -319,6 +341,9 @@ class SignService:
         if need_times <= 0:
             self.bbs_states[BBSMarkName.BBS_REPLY] = "skip"
             return
+
+        error_times = 0
+        random.shuffle(posts)
         for post in posts:
             post_id = post.get("postId")
             if not post_id:
@@ -327,10 +352,16 @@ class SignService:
             res = await dna_api.do_reply(self.token, post, reply_content, self.dev_code)
             if res.is_success:
                 self.dna_sign.bbs_reply += 1
+            else:
+                error_times += 1
+                if error_times >= self.ERROR_TIMES:
+                    self.error_msg = "❌ 社区任务：帖子回复失败次数过多，请稍后重试"
+                    return
+
             if self.dna_sign.bbs_reply >= dna_bbs_task.times:
                 break
 
-            await asyncio.sleep(random.uniform(self.delay[0], self.delay[1]))
+            await asyncio.sleep(random.uniform(self.delay[0] + 1, self.delay[1] + 1))
 
         self.bbs_states[BBSMarkName.BBS_REPLY] = (
             self.dna_sign.bbs_reply >= dna_bbs_task.times
