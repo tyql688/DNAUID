@@ -3,11 +3,31 @@ from typing import Dict
 from gsuid_core.utils.plugins_config.models import (
     GSC,
     GsBoolConfig,
+    GsDictConfig,
     GsIntConfig,
+    GsListConfig,
     GsStrConfig,
 )
 
 CONFIG_DEFAULT: Dict[str, GSC] = {
+    "DNAAnnGroups": GsDictConfig(
+        "推送公告群组",
+        "二重螺旋公告推送群组",
+        {},
+    ),
+    "DNAAnnNewIds": GsListConfig(
+        "推送公告ID",
+        "二重螺旋公告推送ID列表",
+        [],
+    ),
+    "DNAAnnOpen": GsBoolConfig(
+        "公告推送总开关",
+        "二重螺旋公告推送总开关",
+        True,
+    ),
+    "AnnMinuteCheck": GsIntConfig(
+        "公告推送时间检测（单位min）", "公告推送时间检测（单位min）", 10, 60
+    ),
     "DNALoginUrl": GsStrConfig(
         "二重螺旋登录url",
         "用于设置DNAUID登录界面的配置",

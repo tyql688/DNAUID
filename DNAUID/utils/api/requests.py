@@ -11,6 +11,7 @@ from ..constants.constants import DNA_GAME_ID
 from ..database.models import DNAUser
 from ..utils import timed_async_cache
 from .api import (
+    ANN_LIST_URL,
     BBS_SIGN_URL,
     GAME_SIGN_URL,
     GET_POST_DETAIL_URL,
@@ -32,11 +33,11 @@ from .sign import build_signature, get_dev_code, rsa_encrypt
 
 class DNAApi:
     ssl_verify = True
+    ann_list_data = []
 
     async def get_dna_user(
         self, uid: str, user_id: str, bot_id: str
     ) -> Optional[DNAUser]:
-        # 返回空串 表示绑定已失效
         dna_user = await DNAUser.select_dna_user(uid, user_id, bot_id)
         if not dna_user or not dna_user.cookie:
             return
@@ -157,7 +158,7 @@ class DNAApi:
             return DNAApiResp[Any].err("请求皎皎角服务失败")
 
     async def get_post_detail(
-        self, token: str, post_id: str, dev_code: Optional[str] = None
+        self, post_id: str, token: Optional[str] = None, dev_code: Optional[str] = None
     ):
         """获取帖子详情"""
         header = await get_base_header(dev_code=dev_code, token=token)
@@ -254,6 +255,21 @@ class DNAApi:
             header.update({"rk": rk, "key": ek})
 
         return await self._dna_request(REPLY_POST_URL, "POST", header, data=data)
+
+    async def get_ann_list(self, is_cache: bool = False):
+        if is_cache and self.ann_list_data:
+            return self.ann_list_data
+
+        headers = await get_base_header(dev_code=get_dev_code())
+        data = {
+            "otherUserId": "709542994134436647",
+            "searchType": 1,
+            "type": 2,
+        }
+        res = await self._dna_request(ANN_LIST_URL, "POST", headers, data=data)
+        if res.is_success and isinstance(res.data, dict):
+            self.ann_list_data = res.data.get("postList", [])
+        return self.ann_list_data
 
     async def _dna_request(
         self,

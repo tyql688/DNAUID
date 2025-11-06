@@ -15,12 +15,14 @@ SIGN_CONFIG_PATH = MAIN_PATH / "sign_config.json"
 # 其他的素材
 OTHER_PATH = MAIN_PATH / "other"
 SIGN_PATH = OTHER_PATH / "sign"
+ANN_CARD_PATH = OTHER_PATH / "ann_card"
 
 
 def init_dir():
     for i in [
         MAIN_PATH,
         SIGN_PATH,
+        ANN_CARD_PATH,
     ]:
         i.mkdir(parents=True, exist_ok=True)
 

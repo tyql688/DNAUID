@@ -22,3 +22,7 @@ GET_POST_DETAIL_URL = f"{MAIN_URL}/forum/getPostDetail"
 LIKE_POST_URL = f"{MAIN_URL}/forum/like"
 SHARE_POST_URL = f"{MAIN_URL}/encourage/level/shareTask"
 REPLY_POST_URL = f"{MAIN_URL}/forum/comment/createComment"
+
+
+# ann
+ANN_LIST_URL = f"{MAIN_URL}/user/mine"

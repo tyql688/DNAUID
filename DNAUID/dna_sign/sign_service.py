@@ -267,7 +267,7 @@ class SignService:
             post_id = post.get("postId")
             if not post_id:
                 continue
-            res = await dna_api.get_post_detail(self.token, post_id, self.dev_code)
+            res = await dna_api.get_post_detail(post_id, self.token, self.dev_code)
             if res and res.is_success:
                 self.dna_sign.bbs_detail += 1
             else:
