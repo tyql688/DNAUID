@@ -58,8 +58,9 @@ async def ann_batch_card(post_content: List, drow_height: float) -> bytes:
 
 
 async def ann_detail_card(
-    post_id: str, is_check_time=False
+    post_id: Union[int, str], is_check_time=False
 ) -> Union[bytes, str, List[bytes]]:
+    post_id = str(post_id)
     ann_list = await dna_api.get_ann_list(True)
     if not ann_list:
         raise Exception("获取游戏公告失败,请检查接口是否正常")

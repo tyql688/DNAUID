@@ -15,7 +15,7 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "二重螺旋公告推送群组",
         {},
     ),
-    "DNAAnnNewIds": GsListConfig(
+    "DNAAnnIds": GsListConfig(
         "推送公告ID",
         "二重螺旋公告推送ID列表",
         [],

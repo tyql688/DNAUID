@@ -1,5 +1,6 @@
 import asyncio
 import random
+from typing import List
 
 from gsuid_core.aps import scheduler
 from gsuid_core.bot import Bot
@@ -17,7 +18,7 @@ sv_ann = SV("DNA公告")
 sv_ann_sub = SV("订阅DNA公告", pm=3)
 
 task_name_ann = "订阅DNA公告"
-ann_minute_check: int = DNAConfig.get_config("AnnMinuteCheck").data
+ann_minute_check: int = DNAConfig.get_config("AnnMinuteCheck").data or 10
 
 
 @sv_ann.on_command("公告")
@@ -102,14 +103,14 @@ async def check_dna_ann_state():
         logger.info("[二重螺旋公告] 暂无群订阅")
         return
 
-    ids = DNAConfig.get_config("DNAAnnNewIds").data
+    ids: List[int] = DNAConfig.get_config("DNAAnnIds").data or []
     new_ann_list = await dna_api.get_ann_list()
     if not new_ann_list:
         return
 
-    new_ann_ids = [x["postId"] for x in new_ann_list]
+    new_ann_ids = [int(x["postId"]) for x in new_ann_list]
     if not ids:
-        DNAConfig.set_config("DNAAnnNewIds", new_ann_ids)
+        DNAConfig.set_config("DNAAnnIds", new_ann_ids)
         logger.info("[二重螺旋公告] 初始成功, 将在下个轮询中更新.")
         return
 
@@ -124,7 +125,7 @@ async def check_dna_ann_state():
 
     logger.info(f"[二重螺旋公告] 更新公告id: {new_ann_need_send}")
     save_ids = sorted(ids, reverse=True)[:50] + new_ann_ids
-    DNAConfig.set_config("DNAAnnNewIds", list(set(save_ids)))
+    DNAConfig.set_config("DNAAnnIds", list(set(save_ids)))
 
     for ann_id in new_ann_need_send:
         try:
