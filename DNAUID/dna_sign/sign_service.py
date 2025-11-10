@@ -20,6 +20,34 @@ SIGN_STATUS = {
 }
 
 
+def get_sign_interval():
+    from ..dna_config.dna_config import DNASignConfig
+
+    interval = DNASignConfig.get_config("SigninConcurrentNumInterval").data
+
+    min_interval = int(interval[0])
+    max_interval = int(interval[1])
+    return round(random.uniform(min_interval, max_interval), 2)
+
+
+def sign_concurrent_num():
+    from ..dna_config.dna_config import DNASignConfig
+
+    return DNASignConfig.get_config("SigninConcurrentNum").data
+
+
+def sched_sign():
+    from ..dna_config.dna_config import DNASignConfig
+
+    return DNASignConfig.get_config("DNASchedSignin").data
+
+
+def master_sign():
+    from ..dna_config.dna_config import DNASignConfig
+
+    return DNASignConfig.get_config("SigninMaster").data
+
+
 def can_sign():
     from ..dna_config.dna_config import DNASignConfig
 
@@ -73,6 +101,35 @@ class SignService:
         # 可以签到则返回 False，否则返回 "forbidden"
         self.msg_temp["signed"] = False if can_sign() else "forbidden"
         self.msg_temp["bbs_signed"] = False if can_bbs_sign() else "forbidden"
+
+    def get_auto_sign_msg(self, is_bbs: bool):
+        """
+        返回"禁止", 禁止
+        返回"成功", 签到成功
+        返回"失败", 签到失败
+        """
+        if is_bbs:
+            if self.msg_temp["bbs_signed"] == "forbidden":
+                return "禁止"
+            if self.msg_temp["bbs_signed"] == "skip":
+                return "请勿重复签到"
+            if self.msg_temp["bbs_signed"] == "failed":
+                return "签到失败"
+            if self.msg_temp["bbs_signed"]:
+                return "签到成功"
+            else:
+                return "签到失败"
+        else:
+            if self.msg_temp["signed"] == "forbidden":
+                return "禁止"
+            if self.msg_temp["signed"] == "skip":
+                return "请勿重复签到"
+            if self.msg_temp["signed"] == "failed":
+                return "签到失败"
+            if self.msg_temp["signed"]:
+                return "签到成功"
+            else:
+                return "签到失败"
 
     def turn_msg(self):
         check_config = get_check_config()
