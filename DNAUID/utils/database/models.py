@@ -222,7 +222,7 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
-    async def get_waves_all_user(
+    async def get_dna_all_user(
         cls: Type[T_DNAUser], session: AsyncSession
     ) -> List[T_DNAUser]:
         """获取所有有效用户"""
@@ -270,7 +270,7 @@ class DNAUser(User, table=True):
 
 class DNASign(BaseIDModel, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
-    uid: str = Field(title="鸣潮UID")
+    uid: str = Field(title="二重螺旋UID")
     game_sign: int = Field(default=0, title="游戏签到")
     bbs_sign: int = Field(default=0, title="社区签到")
     bbs_detail: int = Field(default=0, title="社区浏览")

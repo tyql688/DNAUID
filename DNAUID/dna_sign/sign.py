@@ -114,7 +114,7 @@ async def auto_sign():
         return "[二重螺旋]自动任务\n签到功能未开启"
     if not can_sign() and not can_bbs_sign():
         return "[二重螺旋]自动任务\n签到功能未开启"
-    dna_users: List[DNAUser] = await DNAUser.get_waves_all_user()
+    dna_users: List[DNAUser] = await DNAUser.get_dna_all_user()
     if not dna_users:
         return "[二重螺旋]自动任务\n没有需要签到的用户"
 
