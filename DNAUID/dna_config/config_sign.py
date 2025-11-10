@@ -36,14 +36,9 @@ CONFIG_SIGN: Dict[str, GSC] = {
         "开启后自动帮登录的人签到",
         False,
     ),
-    "SchedSignin": GsBoolConfig(
-        "定时游戏签到开关",
-        "定时游戏签到开关",
-        False,
-    ),
-    "BBSSchedSignin": GsBoolConfig(
-        "定时皎皎角社区任务开关",
-        "定时皎皎角社区任务开关",
+    "DNASchedSignin": GsBoolConfig(
+        "定时签到开关",
+        "定时签到开关",
         False,
     ),
     "SignTime": GsTimeConfig(

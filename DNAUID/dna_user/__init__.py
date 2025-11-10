@@ -45,7 +45,7 @@ async def dna_login(bot: Bot, ev: Event):
     ),
     block=True,
 )
-async def send_waves_bind_uid_msg(bot: Bot, ev: Event):
+async def send_dna_bind_uid_msg(bot: Bot, ev: Event):
     uid = ev.text.strip().replace("uid", "").replace("UID", "")
     qid = ev.user_id
 

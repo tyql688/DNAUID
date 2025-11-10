@@ -12,6 +12,23 @@ async def send_dna_notify(bot: Bot, ev: Event, msg: str, need_at: bool = True):
     return await bot.send(f"{title}{msg}", at_sender=at_sender)
 
 
+async def dna_uid_invalid(bot: Bot, ev: Event, need_at: bool = True):
+    from ...dna_config.prefix import DNA_PREFIX
+
+    msg = [
+        "UID无效，请重新绑定",
+        f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+    ]
+    msg = "\n".join(msg)
+    return await send_dna_notify(bot, ev, msg, need_at)
+
+
+async def dna_token_invalid(bot: Bot, ev: Event, need_at: bool = True):
+    msg = ["Token无效，请重新登录"]
+    msg = "\n".join(msg)
+    return await send_dna_notify(bot, ev, msg, need_at)
+
+
 async def dna_login_fail(bot: Bot, ev: Event, need_at: bool = True):
     from ...dna_config.prefix import DNA_PREFIX
 
