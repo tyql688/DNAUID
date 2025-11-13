@@ -1,3 +1,4 @@
+import html
 import re
 import time
 from datetime import datetime
@@ -7,10 +8,10 @@ from PIL import Image, ImageDraw, ImageOps
 
 from gsuid_core.logger import logger
 from gsuid_core.utils.image.convert import convert_img
-from gsuid_core.utils.image.image_tools import easy_paste, get_pic
+from gsuid_core.utils.image.image_tools import easy_paste
 
 from ..utils import dna_api, get_datetime
-from ..utils.fonts.dna_fonts import dna_font_26
+from ..utils.fonts.dna_fonts import unicode_font_26
 from ..utils.image import download_pic_from_url
 from ..utils.resource.RESOURCE_PATH import ANN_CARD_PATH
 
@@ -25,7 +26,7 @@ async def ann_batch_card(post_content: List, drow_height: float) -> bytes:
             content = temp["content"]
             drow_duanluo, _, drow_line_height, _ = split_text(content)
             for duanluo, line_count in drow_duanluo:
-                draw.text((x, y), duanluo, fill=(0, 0, 0), font=dna_font_26)
+                draw.text((x, y), duanluo, fill=(0, 0, 0), font=unicode_font_26)
                 y += drow_line_height * line_count + 30
         elif (
             temp["contentType"] == 2
@@ -42,9 +43,28 @@ async def ann_batch_card(post_content: List, drow_height: float) -> bytes:
                 img_x = (im.width - img.width) // 2
             easy_paste(im, img, (img_x, y))
             y += img.size[1] + 40
+        elif (
+            temp["contentType"] == 5
+            and "contentVideo" in temp
+            and "coverUrl" in temp["contentVideo"]
+            and temp["contentVideo"]["coverUrl"].endswith(("jpg", "png", "jpeg"))
+        ):
+            try:
+                video_temp = temp["contentVideo"]
+                img = await download_pic_from_url(ANN_CARD_PATH, video_temp["coverUrl"])
+                img_x = 0
+                if img.width > im.width:
+                    ratio = im.width / img.width
+                    img = img.resize((int(img.width * ratio), int(img.height * ratio)))
+                else:
+                    img_x = (im.width - img.width) // 2
+                easy_paste(im, img, (img_x, y))
+                y += img.size[1] + 40
+            except Exception:
+                pass
 
-    if hasattr(dna_font_26, "getbbox"):
-        bbox = dna_font_26.getbbox("囗")
+    if hasattr(unicode_font_26, "getbbox"):
+        bbox = unicode_font_26.getbbox("囗")
         padding = (
             int(bbox[2] - bbox[0]),
             int(bbox[3] - bbox[1]),
@@ -52,7 +72,7 @@ async def ann_batch_card(post_content: List, drow_height: float) -> bytes:
             int(bbox[3] - bbox[1]),
         )
     else:
-        w, h = dna_font_26.getsize("囗")  # type: ignore
+        w, h = unicode_font_26.getsize("囗")  # type: ignore
         padding = (w, h, w, h)
     return await convert_img(ImageOps.expand(im, padding, "#f9f6f2"))
 
@@ -85,12 +105,6 @@ async def ann_detail_card(
             return "该公告已过期"
 
     post_content = post_detail["postContent"]
-    content_type2_first = [x for x in post_content if x["contentType"] == 2]
-    if not content_type2_first and "coverImages" in post_detail:
-        _node = post_detail["coverImages"][0]
-        _node["contentType"] = 2
-        post_content.insert(0, _node)
-
     if not post_content:
         return "未找到该公告"
 
@@ -116,13 +130,29 @@ async def ann_detail_card(
             and temp["url"].endswith(("jpg", "png", "jpeg"))
         ):
             # 图片
-            _size = (temp["imgWidth"], temp["imgHeight"])
-            img = await get_pic(temp["url"], _size)
+            img = await download_pic_from_url(ANN_CARD_PATH, temp["url"])
             img_height = img.size[1]
             if img.width > 1080:
                 ratio = 1080 / img.width
                 img_height = int(img.height * ratio)
             drow_height += img_height + 40
+        elif (
+            content_type == 5
+            and "contentVideo" in temp
+            and "coverUrl" in temp["contentVideo"]
+            and temp["contentVideo"]["coverUrl"].endswith(("jpg", "png", "jpeg"))
+        ):
+            try:
+                # 视频图片
+                video_temp = temp["contentVideo"]
+                img = await download_pic_from_url(ANN_CARD_PATH, video_temp["coverUrl"])
+                img_height = img.size[1]
+                if img.width > 1080:
+                    ratio = 1080 / img.width
+                    img_height = int(img.height * ratio)
+                drow_height += img_height + 40
+            except Exception:
+                pass
 
         index_end = index + 1
         if drow_height > 5000:
@@ -139,6 +169,8 @@ async def ann_detail_card(
 
 
 def split_text(content: str):
+    # 常见 HTML 实体与换行的预处理
+    content = _normalize_content(content)
     # 按规定宽度分组
     max_line_height, total_lines = 0, 0
     allText = []
@@ -166,7 +198,7 @@ def get_duanluo(text: str):
     # 行高
     line_height = 0
     for char in text:
-        left, top, right, bottom = draw.textbbox((0, 0), char, dna_font_26)
+        left, top, right, bottom = draw.textbbox((0, 0), char, unicode_font_26)
         width, height = (right - left, bottom - top)
         sum_width += width
         if sum_width > max_width:  # 超过预设宽度就修改段落 以及当前行数
@@ -178,6 +210,17 @@ def get_duanluo(text: str):
     if not duanluo.endswith("\n"):
         duanluo += "\n"
     return duanluo, line_height, line_count
+
+
+def _normalize_content(content: str) -> str:
+    try:
+        text = html.unescape(content)
+    except Exception:
+        text = content
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = text.replace("\u00a0", " ")
+
+    return text
 
 
 def format_post_time(post_time: str) -> int:

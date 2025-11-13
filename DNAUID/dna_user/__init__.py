@@ -64,7 +64,7 @@ async def send_dna_bind_uid_msg(bot: Bot, ev: Event):
             if len(difference_uid_list) >= max_bind_num:
                 return await dna_bind_uid_result(bot, ev, uid, -4)
 
-        code = await DNABind.insert_uid(qid, ev.bot_id, uid, ev.group_id, lenth_limit=9)
+        code = await DNABind.insert_uid(qid, ev.bot_id, uid, ev.group_id, lenth_limit=13)
         if code == 0 or code == -2:
             retcode = await DNABind.switch_uid_by_game(qid, ev.bot_id, uid)
         return await dna_bind_uid_result(bot, ev, uid, code)
