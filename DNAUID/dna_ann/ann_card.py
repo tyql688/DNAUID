@@ -9,7 +9,7 @@ from gsuid_core.logger import logger
 from gsuid_core.utils.image.convert import convert_img
 from gsuid_core.utils.image.image_tools import easy_paste, get_pic
 
-from ..utils import dna_api
+from ..utils import dna_api, get_datetime
 from ..utils.fonts.dna_fonts import dna_font_26
 from ..utils.image import download_pic_from_url
 from ..utils.resource.RESOURCE_PATH import ANN_CARD_PATH
@@ -182,7 +182,7 @@ def get_duanluo(text: str):
 
 def format_post_time(post_time: str) -> int:
     try:
-        full_time = f"{datetime.now().year}-{post_time}"
+        full_time = f"{get_datetime().year}-{post_time}"
         timestamp = datetime.strptime(full_time, "%Y-%m-%d").timestamp()
         return int(timestamp)
     except ValueError:

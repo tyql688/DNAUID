@@ -22,7 +22,7 @@ ann_minute_check: int = DNAConfig.get_config("AnnMinuteCheck").data or 10
 
 
 @sv_ann.on_command("公告")
-async def ann_(bot: Bot, ev: Event):
+async def ann_dna(bot: Bot, ev: Event):
     ann_id = ev.text
     if not ann_id:
         ann_list = await dna_api.get_ann_list()
@@ -40,7 +40,7 @@ async def ann_(bot: Bot, ev: Event):
 
 
 @sv_ann_sub.on_fullmatch("订阅公告")
-async def sub_ann_(bot: Bot, ev: Event):
+async def sub_ann_dna(bot: Bot, ev: Event):
     if ev.bot_id != "onebot":
         logger.debug(f"非onebot禁止订阅二重螺旋公告 【{ev.bot_id}】")
         return
@@ -68,7 +68,7 @@ async def sub_ann_(bot: Bot, ev: Event):
 
 
 @sv_ann_sub.on_fullmatch(("取消订阅公告", "取消公告", "退订公告"))
-async def unsub_ann_(bot: Bot, ev: Event):
+async def unsub_ann_dna(bot: Bot, ev: Event):
     if ev.bot_id != "onebot":
         logger.debug(f"非onebot禁止订阅二重螺旋公告 【{ev.bot_id}】")
         return

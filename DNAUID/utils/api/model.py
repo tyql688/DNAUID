@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 from ..constants.sign_bbs_mark import BBSMarkName
+from .mh_map import get_mh_type
 
 
 class UserGame(BaseModel):
@@ -47,6 +48,132 @@ class DNARole(BaseModel):
 
 class DNARoleListRes(BaseModel):
     roles: List[DNARole] = Field(description="roles")
+
+
+class DNARoleForToolInstance(BaseModel):
+    id: int = Field(description="id")
+    name: str = Field(description="name")
+
+
+class DNARoleForToolInstanceInfo(BaseModel):
+    instances: List[DNARoleForToolInstance] = Field(description="instances")
+
+    mh_type: Optional[Literal["role", "weapon", "mzx"]] = Field(
+        description="mh_type", default=None
+    )
+
+    def __init__(self, **data):
+        instances = data.get("instances", [])
+        for instance in instances:
+            _id = instance.get("id")
+            if not _id:
+                continue
+            _type = get_mh_type(f"MH_{_id}")
+            if _type:
+                data["mh_type"] = _type
+                break
+        super().__init__(**data)
+
+
+class WeaponInsForTool(BaseModel):
+    elementIcon: HttpUrl = Field(description="武器类型图标")
+    icon: HttpUrl = Field(description="武器图标")
+    level: int = Field(description="武器等级")
+    name: str = Field(description="武器名称")
+    unLocked: bool = Field(description="是否解锁")
+    weaponEid: Optional[str] = Field(description="weaponEid", default=None)
+    weaponId: int = Field(description="weaponId")
+    # skillLevel: Optional[int] = Field(description="skillLevel")
+
+
+class RoleInsForTool(BaseModel):
+    charEid: Optional[str] = Field(description="charEid", default=None)
+    charId: int = Field(description="charId")
+    elementIcon: HttpUrl = Field(description="元素图标")
+    gradeLevel: int = Field(description="命座等级")
+    icon: HttpUrl = Field(description="角色图标")
+    level: int = Field(description="角色等级")
+    name: str = Field(description="角色名称")
+    unLocked: bool = Field(description="是否解锁")
+
+
+class RoleAchievement(BaseModel):
+    paramKey: str = Field(description="paramKey")
+    paramValue: str = Field(description="paramValue")
+
+
+class RoleShowForTool(BaseModel):
+    roleChars: List[RoleInsForTool] = Field(description="角色列表")
+    langRangeWeapons: List[WeaponInsForTool] = Field(description="武器列表")
+    closeWeapons: List[WeaponInsForTool] = Field(description="武器列表")
+    level: int = Field(description="等级")
+    params: List[RoleAchievement] = Field(description="成就列表")
+    roleId: str = Field(description="角色id")
+    roleName: str = Field(description="角色名称")
+
+
+class RoleInfoForTool(BaseModel):
+    # abyssInfo:
+    roleShow: RoleShowForTool = Field(description="角色信息")
+
+
+class DNARoleForToolRes(BaseModel):
+    instanceInfo: List[DNARoleForToolInstanceInfo] = Field(description="instanceInfo")
+    roleInfo: RoleInfoForTool = Field(description="角色信息")
+
+
+class RoleAttribute(BaseModel):
+    skillRange: str = Field(description="技能范围")
+    strongValue: str = Field(description="strongValue")
+    skillIntensity: str = Field(description="技能威力")
+    weaponTags: List[str] = Field(description="武器精通")
+    defense: int = Field(description="def", alias="防御")
+    enmityValue: str = Field(description="enmityValue")
+    skillEfficiency: str = Field(description="技能效益")
+    skillSustain: str = Field(description="技能耐久")
+    maxHp: int = Field(description="最大生命值")
+    atk: int = Field(description="攻击")
+    maxES: int = Field(description="护盾")
+    maxSp: int = Field(description="最大神志")
+
+
+class RoleSkill(BaseModel):
+    skillId: int = Field(description="技能id")
+    icon: str = Field(description="技能图标")
+    level: int = Field(description="技能等级")
+    skillName: str = Field(description="技能名称")
+
+
+class RoleTrace(BaseModel):
+    icon: HttpUrl = Field(description="溯源图标")
+    description: str = Field(description="溯源描述")
+
+
+class Mode(BaseModel):
+    id: int = Field(description="id 没佩戴为-1")
+    icon: Optional[HttpUrl] = Field(description="图标")
+    quality: Optional[int] = Field(description="质量")
+    name: Optional[str] = Field(description="名称")
+
+
+class RoleDetail(BaseModel):
+    attribute: RoleAttribute = Field(description="角色属性")
+    skills: List[RoleSkill] = Field(description="角色技能")
+    paint: HttpUrl = Field(description="立绘")
+    charName: str = Field(description="角色名称")
+    elementIcon: HttpUrl = Field(description="元素图标")
+    traces: List[RoleTrace] = Field(description="溯源")
+    currentVolume: int = Field(description="当前魔之楔")
+    maxVolume: int = Field(description="最大魔之楔")
+    level: int = Field(description="角色等级")
+    icon: HttpUrl = Field(description="角色头像")
+    gradeLevel: int = Field(description="溯源等级 0-6")
+    elementName: str = Field(description="元素名称")
+    modes: List[Mode] = Field(description="mode")
+
+
+class DNARoleDetailRes(BaseModel):
+    charDetail: RoleDetail = Field(description="角色详情")
 
 
 class DNADayAward(BaseModel):

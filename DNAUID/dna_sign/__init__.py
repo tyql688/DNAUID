@@ -95,7 +95,7 @@ async def dna_sign_result(bot: Bot, ev: Event):
 
 
 @scheduler.scheduled_job("cron", hour=0, minute=5)
-async def clear_sign_record():
+async def clear_dna_sign_record():
     """清除2天前的签到记录"""
     await DNASign.clear_sign_record(get_two_days_ago_date())
     logger.info("[DNAUID] [清除签到记录] 已清除2天前的签到记录!")

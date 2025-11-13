@@ -7,10 +7,11 @@ from gsuid_core.sv import SV
 from ..dna_config.dna_config import DNAConfig
 from ..utils.database.models import DNABind, DNAUser
 from ..utils.msgs.notify import dna_bind_uid_result, dna_login_fail
-from .page_login_router import page_login
+from .login_router import get_cookie, page_login, token_login
 
 sv_dna_login = SV("dna登录")
 sv_dna_bind = SV("dna绑定")
+sv_dna_get_ck = SV("dna获取ck", area="DIRECT")
 
 
 @sv_dna_login.on_command(
@@ -31,6 +32,9 @@ async def dna_login(bot: Bot, ev: Event):
     # 3.token登录 -> dna登录 token
     if text == "":
         return await page_login(bot, ev)
+
+    if text.startswith("eyJh"):
+        return await token_login(bot, ev, text)
 
     return await dna_login_fail(bot, ev)
 
@@ -95,3 +99,17 @@ async def send_dna_bind_uid_msg(bot: Bot, ev: Event):
             return await dna_bind_uid_result(bot, ev, uid, -6)
         data = await DNABind.delete_uid(qid, ev.bot_id, uid)
         return await dna_bind_uid_result(bot, ev, uid, data)
+
+
+@sv_dna_get_ck.on_fullmatch(
+    (
+        "获取ck",
+        "获取CK",
+        "获取Token",
+        "获取token",
+        "获取TOKEN",
+    ),
+    block=True,
+)
+async def send_dna_get_ck_msg(bot: Bot, ev: Event):
+    await bot.send(await get_cookie(bot, ev))

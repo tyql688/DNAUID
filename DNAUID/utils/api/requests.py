@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 from urllib.parse import urlencode
 
@@ -23,6 +24,7 @@ from .api import (
     LOGIN_LOG_URL,
     LOGIN_URL,
     REPLY_POST_URL,
+    ROLE_FOR_TOOL_URL,
     ROLE_LIST_URL,
     SHARE_POST_URL,
     SIGN_CALENDAR_URL,
@@ -51,6 +53,20 @@ class DNAApi:
             return
 
         return dna_user
+
+    async def get_random_dna_user(self) -> Optional[DNAUser]:
+        dna_users = await DNAUser.get_dna_all_user()
+        if not dna_users:
+            return
+        random.shuffle(dna_users)
+        for dna_user in dna_users[:3]:
+            login_log = await self.login_log(dna_user.cookie, dna_user.dev_code)
+            if not login_log.success:
+                await DNAUser.mark_cookie_invalid(dna_user.uid, dna_user.cookie, "无效")
+                continue
+
+            return dna_user
+        return None
 
     @timed_async_cache(86400, lambda x: x and len(x) > 0)
     async def get_rsa_public_key(self) -> str:
@@ -95,6 +111,11 @@ class DNAApi:
     async def get_role_list(self, token: str, dev_code: str):
         headers = await get_base_header(dev_code=dev_code, token=token)
         return await self._dna_request(ROLE_LIST_URL, "POST", headers)
+
+    async def get_default_role_for_tool(self, token: str, dev_code: str):
+        headers = await get_base_header(dev_code=dev_code, token=token)
+        data = {"type": 1}
+        return await self._dna_request(ROLE_FOR_TOOL_URL, "POST", headers, data=data)
 
     async def have_sign_in(self, token: str, dev_code: Optional[str] = None):
         headers = await get_base_header(dev_code=dev_code, token=token)

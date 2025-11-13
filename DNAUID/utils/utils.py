@@ -3,8 +3,11 @@ import functools
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
+
+TZ = ZoneInfo("Asia/Shanghai")
 
 
 class TimedCache:
@@ -119,16 +122,20 @@ async def get_public_ip(host="127.127.127.127"):
     return host
 
 
+def get_datetime(tz: ZoneInfo = TZ):
+    return datetime.now(tz)
+
+
 def get_today_date():
-    today = datetime.now()
+    today = get_datetime()
     return today.strftime("%Y-%m-%d")
 
 
 def get_yesterday_date():
-    yesterday = datetime.now() - timedelta(days=1)
+    yesterday = get_datetime() - timedelta(days=1)
     return yesterday.strftime("%Y-%m-%d")
 
 
 def get_two_days_ago_date():
-    two_days_ago = datetime.now() - timedelta(days=2)
+    two_days_ago = get_datetime() - timedelta(days=2)
     return two_days_ago.strftime("%Y-%m-%d")

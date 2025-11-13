@@ -42,6 +42,18 @@ async def page_login(bot: Bot, ev: Event):
         raise Exception("二重螺旋暂不支持外置登录")
 
 
+async def token_login(bot: Bot, ev: Event, token: str):
+    """token登录入口"""
+    login_service = DNALoginService(bot, ev)
+    return await login_service.dna_login_token(token=token)
+
+
+async def get_cookie(bot: Bot, ev: Event):
+
+    login_service = DNALoginService(bot, ev)
+    return await login_service.get_cookie()
+
+
 async def get_dna_login_url() -> tuple[str, bool]:
     """获取网页登录的url
 

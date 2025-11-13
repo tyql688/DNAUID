@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional
+from typing import List, Optional, Union
 
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
@@ -32,7 +32,12 @@ class DNALoginService:
         if login_response.isComplete == 0:
             return complete_error_msg
 
-        role_list_response = await dna_api.get_role_list(login_response.token, dev_code)
+        return await self.dna_login_token(login_response.token, dev_code)
+
+    async def dna_login_token(self, token: str, dev_code: Optional[str] = None):
+        if not dev_code:
+            dev_code = await self.get_dev_code()
+        role_list_response = await dna_api.get_role_list(token, dev_code)
         if not role_list_response.is_success:
             return role_list_response.throw_msg()
         if not role_list_response.data:
@@ -57,7 +62,7 @@ class DNALoginService:
                     await DNAUser.update_data_by_data(
                         select_data={"user_id": user_id, "bot_id": bot_id, "uid": uid},
                         update_data={
-                            "cookie": login_response.token,
+                            "cookie": token,
                             "status": "",
                             "dev_code": dev_code,
                         },
@@ -66,7 +71,7 @@ class DNALoginService:
                     await DNAUser.insert_data(
                         user_id=user_id,
                         bot_id=bot_id,
-                        cookie=login_response.token,
+                        cookie=token,
                         uid=uid,
                         status="",
                         dev_code=dev_code,
@@ -91,4 +96,24 @@ class DNALoginService:
         for role in role_ids_msg:
             msg.append(f"- UID: [{role['uid']}] 名字: {role['name']}")
         return "\n".join(msg)
+
+    async def get_cookie(self) -> Union[List[str], str]:
+        uid_list = await DNABind.get_uid_list_by_game(self.ev.user_id, self.ev.bot_id)
+        if not uid_list:
+            return "您当前未绑定token或者token已全部失效\n"
+
+        msg = []
+        for uid in uid_list:
+            dna_user: Optional[DNAUser] = await DNAUser.select_dna_user(
+                uid, self.ev.user_id, self.ev.bot_id
+            )
+            if not dna_user:
+                continue
+            msg.append(f"二重螺旋uid: {uid}")
+            msg.append(f"token: {dna_user.cookie}")
+            msg.append("--------------------------------")
+
+        if not msg:
+            return "您当前未绑定token或者token已全部失效\n"
+
         return "\n".join(msg)

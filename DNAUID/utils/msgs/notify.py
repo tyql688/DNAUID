@@ -29,6 +29,12 @@ async def dna_token_invalid(bot: Bot, ev: Event, need_at: bool = True):
     return await send_dna_notify(bot, ev, msg, need_at)
 
 
+async def dna_not_found(bot: Bot, ev: Event, resource_name: str, need_at: bool = True):
+    return await send_dna_notify(
+        bot, ev, f"{resource_name}未找到，请检查是否正确", need_at
+    )
+
+
 async def dna_login_fail(bot: Bot, ev: Event, need_at: bool = True):
     from ...dna_config.prefix import DNA_PREFIX
 

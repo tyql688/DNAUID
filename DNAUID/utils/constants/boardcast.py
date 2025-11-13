@@ -7,9 +7,11 @@ class BoardcastTypeEnum(str, Enum):
 
     SIGN_RESULT = "订阅二重螺旋签到结果"
     SIGN_DNA = "订阅二重螺旋签到"
+    MH_SUBSCRIBE = "订阅二重螺旋密函"
 
 
 BoardcastType = Literal[
     BoardcastTypeEnum.SIGN_RESULT,
     BoardcastTypeEnum.SIGN_DNA,
+    BoardcastTypeEnum.MH_SUBSCRIBE,
 ]

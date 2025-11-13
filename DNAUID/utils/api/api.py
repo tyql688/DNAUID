@@ -7,7 +7,13 @@ LOGIN_URL = f"{MAIN_URL}/user/sdkLogin"
 GET_RSA_PUBLIC_KEY_URL = f"{MAIN_URL}/config/getRsaPublicKey"
 LOGIN_LOG_URL = f"{MAIN_URL}/user/login/log"
 ROLE_LIST_URL = f"{MAIN_URL}/role/list"
+ROLE_FOR_TOOL_URL = f"{MAIN_URL}/role/defaultRoleForTool"
+# role detail
+ROLE_DETAIL_URL = f"{MAIN_URL}/role/getCharDetail"
+# weapon detail
+WEAPON_DETAIL_URL = f"{MAIN_URL}/weapon/detail"
 
+# artifact set detail
 
 # game sign
 SIGN_CALENDAR_URL = f"{MAIN_URL}/encourage/signin/show"

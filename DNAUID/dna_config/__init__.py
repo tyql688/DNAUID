@@ -23,7 +23,7 @@ async def open_switch_func(bot: Bot, ev: Event):
         return
 
     uid = await DNABind.get_uid_by_game(ev.user_id, ev.bot_id)
-    if uid is None:
+    if not uid:
         return await dna_uid_invalid(bot, ev)
 
     from ..utils.dna_api import dna_api
