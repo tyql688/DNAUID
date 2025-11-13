@@ -1,8 +1,6 @@
 # 根据 code 查找类型（role/weapon/mzx）和名称的映射表
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 _data = {
     "role": [
         {"code": "MH_60102", "name": "扼守/无尽", "on": 0},
@@ -46,42 +44,12 @@ _data = {
 }
 
 
-class MHInfo(BaseModel):
-    """代码信息模型，用于 CODE_MAP 返回值"""
-
-    type: Literal["role", "weapon", "mzx"] = Field(description="类型")
-    name: str = Field(description="名称")
-
-
-CODE_MAP: dict[str, MHInfo] = {
-    **{item["code"]: MHInfo(type="role", name=item["name"]) for item in _data["role"]},
-    **{
-        item["code"]: MHInfo(type="weapon", name=item["name"])
-        for item in _data["weapon"]
-    },
-    **{item["code"]: MHInfo(type="mzx", name=item["name"]) for item in _data["mzx"]},
-}
-
 MH_LIST = list(
     set(
         item["name"].split("/")[0]
         for item in _data["role"] + _data["weapon"] + _data["mzx"]
     )
 )
-
-
-def get_mh_info(code: str) -> MHInfo | None:
-    return CODE_MAP.get(code)
-
-
-def get_mh_name(code: str) -> str | None:
-    info = get_mh_info(code)
-    return info.name if info else None
-
-
-def get_mh_type(code: str) -> Literal["role", "weapon", "mzx"] | None:
-    info = get_mh_info(code)
-    return info.type if info else None
 
 
 def get_mh_type_name(mh_type: Literal["role", "weapon", "mzx"]) -> str:

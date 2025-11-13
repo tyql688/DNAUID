@@ -3,7 +3,6 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl
 
 from ..constants.sign_bbs_mark import BBSMarkName
-from .mh_map import get_mh_type
 
 
 class UserGame(BaseModel):
@@ -62,18 +61,6 @@ class DNARoleForToolInstanceInfo(BaseModel):
         description="mh_type", default=None
     )
 
-    def __init__(self, **data):
-        instances = data.get("instances", [])
-        for instance in instances:
-            _id = instance.get("id")
-            if not _id:
-                continue
-            _type = get_mh_type(f"MH_{_id}")
-            if _type:
-                data["mh_type"] = _type
-                break
-        super().__init__(**data)
-
 
 class WeaponInsForTool(BaseModel):
     elementIcon: HttpUrl = Field(description="武器类型图标")
@@ -120,6 +107,17 @@ class RoleInfoForTool(BaseModel):
 class DNARoleForToolRes(BaseModel):
     instanceInfo: List[DNARoleForToolInstanceInfo] = Field(description="instanceInfo")
     roleInfo: RoleInfoForTool = Field(description="角色信息")
+
+    def __init__(self, **data):
+        instanceInfo = data.get("instanceInfo", [])
+        for index, instance in enumerate(instanceInfo):
+            if index == 0:
+                instance["mh_type"] = "role"
+            elif index == 1:
+                instance["mh_type"] = "weapon"
+            elif index == 2:
+                instance["mh_type"] = "mzx"
+        super().__init__(**data)
 
 
 class RoleAttribute(BaseModel):

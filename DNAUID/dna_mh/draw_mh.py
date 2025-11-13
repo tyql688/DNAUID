@@ -11,8 +11,7 @@ from gsuid_core.utils.image.convert import convert_img
 
 from ..utils import get_datetime
 from ..utils.api.mh_map import get_mh_type_name
-from ..utils.database.models import DNABind
-from ..utils.fonts.dna_fonts import dna_font_20, dna_font_30
+from ..utils.fonts.dna_fonts import dna_font_20, dna_font_25, dna_font_30
 from ..utils.image import (
     COLOR_GOLDENROD,
     COLOR_GREEN,
@@ -38,10 +37,7 @@ async def draw_mh(bot: Bot, ev: Event):
         await send_dna_notify(bot, ev, "未找到有效的密函数据")
         return
 
-    mh_list = []
-    dna_uid = await DNABind.get_uid_by_game(ev.user_id, ev.bot_id)
-    if dna_uid:
-        mh_list = await get_mh_subscribe_list(bot, ev, dna_uid) or []
+    mh_list = await get_mh_subscribe_list(bot, ev, ev.user_id)
 
     bg_list = ["bg1.jpg", "bg2.jpg", "bg3.jpg"]
     card = Image.open(TEXT_PATH / random.choice(bg_list)).convert("RGBA")
@@ -60,11 +56,14 @@ async def draw_mh(bot: Bot, ev: Event):
         for j, ins in enumerate(mh.instances):
             bar_bg_temp = bar_bg.copy()
             bar_bg_draw = ImageDraw.Draw(bar_bg_temp)
-            if ins.name in mh_list:
+            if (
+                ins.name in mh_list
+                or f"{get_mh_type_name(mh.mh_type)}:{ins.name}" in mh_list
+            ):
                 ins_color = COLOR_GREEN
             else:
                 ins_color = COLOR_WHITE
-            bar_bg_draw.text((50, 18), ins.name, ins_color, dna_font_20)
+            bar_bg_draw.text((50, 15), ins.name, ins_color, dna_font_25)
 
             mh_card.alpha_composite(bar_bg_temp, (70, j * 80 + 420))
 

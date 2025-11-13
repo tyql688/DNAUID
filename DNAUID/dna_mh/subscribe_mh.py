@@ -12,15 +12,10 @@ from gsuid_core.subscribe import gs_subscribe
 from gsuid_core.utils.database.models import Subscribe
 
 from ..dna_config.prefix import DNA_PREFIX
-from ..utils import dna_api, get_datetime
+from ..utils import get_datetime
 from ..utils.api.mh_map import get_mh_type_name
 from ..utils.constants.boardcast import BoardcastTypeEnum
-from ..utils.database.models import DNABind
-from ..utils.msgs.notify import (
-    dna_token_invalid,
-    dna_uid_invalid,
-    send_dna_notify,
-)
+from ..utils.msgs.notify import send_dna_notify
 from .cache_mh import get_mh_result
 
 
@@ -33,18 +28,30 @@ def str2list(s: str) -> List[str]:
     return s.split(",")
 
 
-async def option_add_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
+def subscribe_mh_key(mh_name: str, mh_type: Optional[str] = None) -> str:
+    return mh_name if not mh_type else f"{mh_type}:{mh_name}"
+
+
+async def option_add_mh(
+    bot: Bot, ev: Event, user_id: str, mh_name: str, mh_type: Optional[str] = None
+):
     if mh_name == "全部":
         await send_dna_notify(
             bot, ev, f"禁止订阅全部密函, 请使用[{DNA_PREFIX}密函列表]命令查看可订阅密函"
         )
         return
+
+    if not mh_type:
+        sub_list = [f"角色:{mh_name}", f"武器:{mh_name}", f"魔之楔:{mh_name}"]
+    else:
+        sub_list = [f"{mh_type}:{mh_name}"]
+
     data = await gs_subscribe.get_subscribe(
         BoardcastTypeEnum.MH_SUBSCRIBE,
         user_id=ev.user_id,
         bot_id=ev.bot_id,
         user_type=ev.user_type,
-        uid=uid,
+        uid=user_id,
         WS_BOT_ID=ev.WS_BOT_ID,
     )
     if not data:
@@ -52,10 +59,10 @@ async def option_add_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
             "single",
             BoardcastTypeEnum.MH_SUBSCRIBE,
             ev,
-            uid=uid,
-            extra_message=list2str([mh_name]),
+            uid=user_id,
+            extra_message=list2str(sub_list),
         )
-        await send_dna_notify(bot, ev, f"成功订阅密函【{mh_name}】")
+        await send_dna_notify(bot, ev, f"成功订阅密函【{','.join(sub_list)}】")
     else:
         for item in data:
             if not item.extra_message:
@@ -63,20 +70,23 @@ async def option_add_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
                     "single",
                     BoardcastTypeEnum.MH_SUBSCRIBE,
                     ev,
-                    uid=uid,
-                    extra_message=list2str([mh_name]),
+                    uid=user_id,
+                    extra_message=list2str(sub_list),
                 )
-                await send_dna_notify(bot, ev, f"成功订阅密函【{mh_name}】")
+                await send_dna_notify(bot, ev, f"成功订阅密函【{','.join(sub_list)}】")
                 continue
-            if mh_name in item.extra_message:
+            old_list = str2list(item.extra_message)
+
+            if len(set(sub_list) & set(old_list)) == len(sub_list):
                 await send_dna_notify(bot, ev, f"请勿重复订阅密函【{mh_name}】")
                 continue
-            extra_message = list2str(str2list(item.extra_message) + [mh_name])
+
+            extra_message = list2str(list(set(old_list + sub_list)))
             await gs_subscribe.update_subscribe_message(
                 "single",
                 BoardcastTypeEnum.MH_SUBSCRIBE,
                 ev,
-                uid=uid,
+                uid=user_id,
                 extra_message=extra_message,
             )
             await send_dna_notify(
@@ -86,41 +96,47 @@ async def option_add_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
             )
 
 
-async def option_delete_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
+async def option_delete_mh(
+    bot: Bot, ev: Event, user_id: str, mh_name: str, mh_type: Optional[str] = None
+):
     data = await gs_subscribe.get_subscribe(
         BoardcastTypeEnum.MH_SUBSCRIBE,
         user_id=ev.user_id,
         bot_id=ev.bot_id,
         user_type=ev.user_type,
-        uid=uid,
+        uid=user_id,
         WS_BOT_ID=ev.WS_BOT_ID,
     )
     if not data:
-        await send_dna_notify(bot, ev, f"未曾订阅密函【{mh_name}】")
+        await send_dna_notify(bot, ev, "未曾订阅密函")
         return
     if mh_name == "全部":
         await gs_subscribe.delete_subscribe(
             "single",
             BoardcastTypeEnum.MH_SUBSCRIBE,
             ev,
-            uid=uid,
+            uid=user_id,
         )
         await send_dna_notify(bot, ev, "成功取消订阅全部密函!")
         return
 
+    if not mh_type:
+        sub_list = [f"角色:{mh_name}", f"武器:{mh_name}", f"魔之楔:{mh_name}"]
+    else:
+        sub_list = [f"{mh_type}:{mh_name}"]
+
     for item in data:
-        if not item.extra_message or mh_name not in item.extra_message:
+        if not item.extra_message:
             await send_dna_notify(bot, ev, f"未曾订阅密函【{mh_name}】")
             continue
 
-        extra_message = list2str(
-            [i for i in str2list(item.extra_message) if i != mh_name]
-        )
+        old_list = str2list(item.extra_message)
+        extra_message = list2str(list(set(old_list) - set(sub_list)))
         await gs_subscribe.update_subscribe_message(
             "single",
             BoardcastTypeEnum.MH_SUBSCRIBE,
             ev,
-            uid=uid,
+            uid=user_id,
             extra_message=extra_message,
         )
         await send_dna_notify(
@@ -130,53 +146,38 @@ async def option_delete_mh(bot: Bot, ev: Event, uid: str, mh_name: str):
         )
 
 
-async def subscribe_mh(bot: Bot, ev: Event, mh_name: str):
-    dna_uid = await DNABind.get_uid_by_game(ev.user_id, ev.bot_id)
-    if not dna_uid:
-        await dna_uid_invalid(bot, ev)
-        return
-
-    dna_user = await dna_api.get_dna_user(dna_uid, ev.user_id, ev.bot_id)
-    if not dna_user:
-        await dna_token_invalid(bot, ev)
-        return
-
+async def subscribe_mh(
+    bot: Bot,
+    ev: Event,
+    mh_name: str,
+    mh_type: Optional[str] = None,
+):
     if "取消" in ev.raw_text:
-        await option_delete_mh(bot, ev, dna_user.uid, mh_name)
+        await option_delete_mh(bot, ev, ev.user_id, mh_name, mh_type)
     else:
-        await option_add_mh(bot, ev, dna_user.uid, mh_name)
+        await option_add_mh(bot, ev, ev.user_id, mh_name, mh_type)
 
 
-async def get_mh_subscribe_list(bot: Bot, ev: Event, uid: str) -> Optional[List[str]]:
+async def get_mh_subscribe_list(bot: Bot, ev: Event, user_id: str) -> List[str]:
     subscribe_data = await gs_subscribe.get_subscribe(
         BoardcastTypeEnum.MH_SUBSCRIBE,
         user_id=ev.user_id,
         bot_id=ev.bot_id,
         user_type=ev.user_type,
         WS_BOT_ID=ev.WS_BOT_ID,
-        uid=uid,
+        uid=user_id,
     )
     if not subscribe_data:
-        return
+        return []
     if not subscribe_data[0].extra_message:
-        return
+        return []
 
     mh_list = str2list(subscribe_data[0].extra_message)
     return mh_list
 
 
 async def get_mh_subscribe(bot: Bot, ev: Event):
-    dna_uid = await DNABind.get_uid_by_game(ev.user_id, ev.bot_id)
-    if not dna_uid:
-        await dna_uid_invalid(bot, ev)
-        return
-
-    dna_user = await dna_api.get_dna_user(dna_uid, ev.user_id, ev.bot_id)
-    if not dna_user:
-        await dna_token_invalid(bot, ev)
-        return
-
-    mh_list = await get_mh_subscribe_list(bot, ev, dna_user.uid)
+    mh_list = await get_mh_subscribe_list(bot, ev, ev.user_id)
     if not mh_list:
         await send_dna_notify(bot, ev, "未曾订阅密函")
         return
@@ -201,8 +202,7 @@ async def send_mh_notify():
         logger.warning("未找到有效的密函数据")
         return
 
-    mh_datas = {"role": [], "weapon": [], "mzx": []}
-    # {"拆解": ["role", "weapon"]}
+    # {"拆解": ["role", "weapon"], "角色:拆解": ["role"], "武器:拆解": ["weapon"]}
     mh_re_datas: defaultdict[str, list[Literal["role", "weapon", "mzx"]]] = defaultdict(
         list
     )
@@ -210,23 +210,30 @@ async def send_mh_notify():
         if not ins.mh_type:
             continue
 
+        mh_type_name = get_mh_type_name(ins.mh_type)
+
         for m in ins.instances:
             mh_name = m.name.split("/")[0]
-            mh_datas[ins.mh_type].append(mh_name)
             mh_re_datas[mh_name].append(ins.mh_type)
-    # set("拆解", "勘探", "追缉")
+            mh_re_datas[subscribe_mh_key(mh_name, mh_type_name)].append(ins.mh_type)
+    # set("拆解", "勘探", "追缉", "角色:拆解", "武器:勘探", "魔之楔:勘探")
     mh_name_set = set(mh_re_datas.keys())
+
+    logger.info(f"mh_name_set: {mh_name_set}")
+    logger.info(f"mh_re_datas: {mh_re_datas}")
 
     async def private_push(subscribe: Subscribe, valid_mh_list: list[str]):
         if not valid_mh_list:
             return
 
         push_msg = []
-        for mh_name in valid_mh_list:
-            mh_type_list = mh_re_datas[mh_name]
+        for key in valid_mh_list:
+            mh_type_list = mh_re_datas[key]
             for mh_type in mh_type_list:
                 mh_type_name = get_mh_type_name(mh_type)
-                push_msg.append(f"{mh_type_name} : {mh_name}")
+                if ":" in key:
+                    key = key.split(":")[1]
+                push_msg.append(f"{mh_type_name} : {key}")
 
         if push_msg:
             push_msg.insert(0, "当前订阅密函已刷新:")
@@ -245,13 +252,15 @@ async def send_mh_notify():
             return
         if not subscribe.group_id:
             return
-        for mh_name in valid_mh_list:
-            mh_type_list = mh_re_datas[mh_name]
+        for key in valid_mh_list:
+            mh_type_list = mh_re_datas[key]
             for mh_type in mh_type_list:
                 mh_type_name = get_mh_type_name(mh_type)
-                groupid2push_msg[subscribe.group_id][
-                    f"{mh_type_name} : {mh_name}"
-                ].append(subscribe.user_id)
+                if ":" in key:
+                    key = key.split(":")[1]
+                groupid2push_msg[subscribe.group_id][f"{mh_type_name} : {key}"].append(
+                    subscribe.user_id
+                )
 
         if subscribe.group_id not in groupid2sub:
             groupid2sub[subscribe.group_id] = subscribe
@@ -262,8 +271,10 @@ async def send_mh_notify():
 
         valid_mh_list = []
         for i in mh_name_set:
-            if i in subscribe.extra_message:
+            if i == subscribe.extra_message:
                 valid_mh_list.append(i)
+
+        logger.info(f"valid_mh_list: {valid_mh_list}")
 
         if (
             "private" in DNAConfig.get_config("MHSubscribe").data
