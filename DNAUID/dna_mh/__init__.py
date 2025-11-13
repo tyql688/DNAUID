@@ -65,8 +65,3 @@ async def send_mh_subscribe(bot: Bot, ev: Event):
 @scheduler.scheduled_job("cron", hour="*", minute="0", second="5", timezone=TZ)
 async def dna_push_mh_notify():
     await send_mh_notify()
-
-
-@sv_mh_subscribe.on_fullmatch("测试密函推送", block=True)
-async def test_push_mh_notify(bot: Bot, ev: Event):
-    await send_mh_notify()

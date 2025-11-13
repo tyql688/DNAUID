@@ -6,6 +6,7 @@ from gsuid_core.utils.plugins_config.models import (
     GsDictConfig,
     GsIntConfig,
     GsListConfig,
+    GsListStrConfig,
     GsStrConfig,
 )
 
@@ -55,5 +56,11 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
     ),
     "MaxBindNum": GsIntConfig(
         "绑定UID限制数量（未登录）", "绑定UID限制数量（未登录）", 2, 100
+    ),
+    "MHSubscribe": GsListStrConfig(
+        "密函订阅开关",
+        "private=私聊;group=群聊",
+        data=["group"],
+        options=["private", "group"],
     ),
 }

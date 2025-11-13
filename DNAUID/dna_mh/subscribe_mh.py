@@ -184,6 +184,11 @@ async def get_mh_subscribe(bot: Bot, ev: Event):
 
 
 async def send_mh_notify():
+    from ..dna_config.dna_config import DNAConfig
+
+    if not DNAConfig.get_config("MHSubscribe").data:
+        return
+
     subscribe_data = await gs_subscribe.get_subscribe(BoardcastTypeEnum.MH_SUBSCRIBE)
     if not subscribe_data:
         return
@@ -260,9 +265,16 @@ async def send_mh_notify():
             if i in subscribe.extra_message:
                 valid_mh_list.append(i)
 
-        if subscribe.user_type == "direct":
+        if (
+            "private" in DNAConfig.get_config("MHSubscribe").data
+            and subscribe.user_type == "direct"
+        ):
             await private_push(subscribe, valid_mh_list)
-        elif subscribe.user_type == "group" and subscribe.group_id:
+        elif (
+            "group" in DNAConfig.get_config("MHSubscribe").data
+            and subscribe.user_type == "group"
+            and subscribe.group_id
+        ):
             await group_push(subscribe, valid_mh_list)
 
     for group_id, _sub in groupid2sub.items():
