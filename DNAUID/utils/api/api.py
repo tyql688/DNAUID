@@ -13,7 +13,9 @@ ROLE_DETAIL_URL = f"{MAIN_URL}/role/getCharDetail"
 # weapon detail
 WEAPON_DETAIL_URL = f"{MAIN_URL}/weapon/detail"
 
-# artifact set detail
+# mr
+SHORT_NOTE_URL = f"{MAIN_URL}/role/getShortNoteInfo"
+
 
 # game sign
 SIGN_CALENDAR_URL = f"{MAIN_URL}/encourage/signin/show"

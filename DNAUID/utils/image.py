@@ -3,11 +3,15 @@ import random
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 
 from gsuid_core.logger import logger
+from gsuid_core.models import Event
 from gsuid_core.utils.download_resource.download_file import download
-from gsuid_core.utils.image.image_tools import crop_center_img
+from gsuid_core.utils.image.image_tools import (
+    crop_center_img,
+    get_event_avatar,
+)
 
 from .resource.RESOURCE_PATH import (
     AVATAR_PATH,
@@ -154,6 +158,112 @@ async def get_custom_paint_img(
                 return True, Image.open(f"{custom_dir}/{path}").convert("RGBA")
 
     return False, await get_paint_img(char_id, pic_url)
+
+
+async def get_avatar_title_img(
+    ev: Event,
+    uid: str,
+    name: str,
+    user_level: Optional[int] = None,
+    other_info: Optional[list[tuple[str, str]]] = None,
+):
+    from .fonts.dna_fonts import (
+        dna_font_20,
+        dna_font_24,
+        dna_font_30,
+        dna_font_40,
+        dna_font_50,
+    )
+
+    img = Image.open(TEXT_PATH / "avatar_title_bg.png").convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    draw.text(
+        (320, 100),
+        f"{name}",
+        COLOR_WHITE,
+        dna_font_50,
+        "lm",
+    )
+
+    draw.rounded_rectangle(
+        (320, 140, 320 + 330, 140 + 40),
+        15,
+        COLOR_PALE_GOLDENROD,
+    )
+
+    draw.text(
+        (330, 160),
+        f"UID {uid}",
+        COLOR_BLACK,
+        dna_font_30,
+        "lm",
+    )
+
+    avater_size = 190
+
+    avatar_temp = Image.new("RGBA", (avater_size, avater_size))
+    avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+    avatar = avatar.resize((avater_size - 60, avater_size - 60))
+
+    avatar_temp.alpha_composite(avatar, (30, 30))
+
+    avatar_frame = Image.open(TEXT_PATH / "avatar_frame.png").convert("RGBA")
+    avatar_frame = avatar_frame.resize((avater_size, avater_size))
+    avatar_temp.alpha_composite(avatar_frame, (0, 0))
+
+    if user_level:
+        avatar_title_level = Image.open(TEXT_PATH / "avatar_title_level.png").convert(
+            "RGBA"
+        )
+        draw_avatar_title_level = ImageDraw.Draw(avatar_title_level)
+        draw_avatar_title_level.text(
+            (36, 35),
+            f"{user_level}",
+            COLOR_WHITE,
+            dna_font_24,
+            "mm",
+        )
+        avatar_temp.alpha_composite(avatar_title_level, (120, 120))
+
+    img.alpha_composite(avatar_temp, (115, 20))
+
+    if other_info and len(other_info) >= 2:
+        avatar_title_base_info = Image.open(
+            TEXT_PATH / "avatar_title_base_info.png"
+        ).convert("RGBA")
+
+        if len(other_info) >= 4:
+            other_info = other_info[:4]
+            next_x = 120
+            start_x = 70
+        elif len(other_info) == 3:
+            next_x = 150
+            start_x = 100
+        elif len(other_info) == 2:
+            next_x = 200
+            start_x = 150
+
+        draw_avatar_title_base_info = ImageDraw.Draw(avatar_title_base_info)
+        for index, value in enumerate(other_info):
+            k, v = value
+            draw_avatar_title_base_info.text(
+                (index * next_x + start_x, 23),
+                v,
+                COLOR_WHITE,
+                dna_font_40,
+                "mm",
+            )
+            draw_avatar_title_base_info.text(
+                (index * next_x + start_x, 63),
+                k,
+                COLOR_WHITE,
+                dna_font_20,
+                "mm",
+            )
+
+        img.alpha_composite(avatar_title_base_info, (680, 90))
+
+    return img
 
 
 def add_footer(

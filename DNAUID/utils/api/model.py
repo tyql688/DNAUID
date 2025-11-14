@@ -62,6 +62,33 @@ class DNARoleForToolInstanceInfo(BaseModel):
     )
 
 
+class DraftDoingInfo(BaseModel):
+    draftCompleteNum: int = Field(description="draftCompleteNum")
+    draftDoingNum: int = Field(description="draftDoingNum")
+    endTime: str = Field(description="结束时间")
+    productId: Optional[int] = Field(description="productId")
+    productName: str = Field(description="productName")
+    startTime: str = Field(description="开始时间")
+
+
+class DraftInfo(BaseModel):
+    draftDoingInfo: Optional[List[DraftDoingInfo]] = Field(
+        description="draftDoingInfo", default=None
+    )
+    draftDoingNum: int = Field(description="正在做的锻造")
+    draftMaxNum: int = Field(description="最大锻造数量")
+
+
+class DNARoleShortNoteRes(BaseModel):
+    rougeLikeRewardCount: int = Field(description="迷津进度")
+    rougeLikeRewardTotal: int = Field(description="迷津总数")
+    currentTaskProgress: int = Field(description="备忘手记进度")
+    maxDailyTaskProgress: int = Field(description="备忘手记总数")
+    hardBossRewardCount: int = Field(description="梦魇进度")
+    hardBossRewardTotal: int = Field(description="梦魇总数")
+    draftInfo: DraftInfo = Field(description="锻造信息")
+
+
 class WeaponInsForTool(BaseModel):
     elementIcon: HttpUrl = Field(description="武器类型图标")
     icon: HttpUrl = Field(description="武器图标")

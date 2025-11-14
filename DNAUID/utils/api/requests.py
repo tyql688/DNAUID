@@ -27,6 +27,7 @@ from .api import (
     ROLE_FOR_TOOL_URL,
     ROLE_LIST_URL,
     SHARE_POST_URL,
+    SHORT_NOTE_URL,
     SIGN_CALENDAR_URL,
 )
 from .request_util import DNAApiResp, RespCode, get_base_header, is_h5
@@ -116,6 +117,10 @@ class DNAApi:
         headers = await get_base_header(dev_code=dev_code, token=token)
         data = {"type": 1}
         return await self._dna_request(ROLE_FOR_TOOL_URL, "POST", headers, data=data)
+
+    async def get_short_note_info(self, token: str, dev_code: str):
+        headers = await get_base_header(dev_code=dev_code, token=token)
+        return await self._dna_request(SHORT_NOTE_URL, "POST", headers)
 
     async def have_sign_in(self, token: str, dev_code: Optional[str] = None):
         headers = await get_base_header(dev_code=dev_code, token=token)

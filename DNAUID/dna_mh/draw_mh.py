@@ -24,6 +24,7 @@ from .cache_mh import get_mh_result
 from .subscribe_mh import get_mh_subscribe_list
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
+bg_list = ["bg1.jpg", "bg2.jpg", "bg3.jpg"]
 
 
 async def draw_mh(bot: Bot, ev: Event):
@@ -39,7 +40,6 @@ async def draw_mh(bot: Bot, ev: Event):
 
     mh_list = await get_mh_subscribe_list(bot, ev, ev.user_id)
 
-    bg_list = ["bg1.jpg", "bg2.jpg", "bg3.jpg"]
     card = Image.open(TEXT_PATH / random.choice(bg_list)).convert("RGBA")
 
     bar_bg = Image.open(TEXT_PATH / "bar.png").convert("RGBA")
@@ -76,7 +76,7 @@ async def draw_mh(bot: Bot, ev: Event):
     refresh_bg = Image.open(TEXT_PATH / "refresh_time.png").convert("RGBA")
     draw_refresh_bg = ImageDraw.Draw(refresh_bg)
     draw_refresh_bg.text(
-        (60, 25), f"{format_time(remaining_seconds)}后刷新", COLOR_WHITE, dna_font_20
+        (60, 25), f"{format_seconds(remaining_seconds)}后刷新", COLOR_WHITE, dna_font_20
     )
     card.alpha_composite(refresh_bg, (1400, 20))
 
@@ -88,7 +88,7 @@ async def draw_mh(bot: Bot, ev: Event):
     await bot.send(res)
 
 
-def format_time(remaining_seconds: int) -> str:
-    minutes = remaining_seconds // 60
-    seconds = remaining_seconds % 60
+def format_seconds(seconds: int) -> str:
+    minutes = seconds // 60
+    seconds = seconds % 60
     return f"{minutes}分钟{seconds}秒"
