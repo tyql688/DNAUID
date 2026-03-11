@@ -247,6 +247,7 @@ async def get_avatar_title_img(
     name: str,
     user_level: Optional[int] = None,
     other_info: Optional[list[tuple[str, str]]] = None,
+    avatar_user_id: Optional[str] = None,
 ):
     from .fonts.dna_fonts import (
         dna_font_20,
@@ -284,7 +285,16 @@ async def get_avatar_title_img(
     avater_size = 190
 
     avatar_temp = Image.new("RGBA", (avater_size, avater_size))
-    avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+
+    # 如果指定了 avatar_user_id，临时修改 ev.at 以获取指定用户的头像
+    if avatar_user_id:
+        original_at = ev.at
+        ev.at = avatar_user_id
+        avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+        ev.at = original_at  # 恢复原始值
+    else:
+        avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+
     avatar = avatar.resize((avater_size - 60, avater_size - 60))
 
     avatar_temp.alpha_composite(avatar, (30, 30))

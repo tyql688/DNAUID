@@ -18,6 +18,7 @@ from ..utils.image import (
     get_smooth_drawer,
     get_avatar_title_img,
 )
+from ..utils.utils import get_uid_by_config, should_use_other_id
 from ..utils.api.model import DNARoleForToolRes, DNARoleShortNoteRes
 from ..utils.msgs.notify import (
     dna_not_found,
@@ -39,12 +40,16 @@ def get_bg_list():
 
 
 async def draw_stamina_img(bot: Bot, ev: Event):
-    uid = await DNABind.get_uid_by_game(ev.user_id, ev.bot_id)
+    # 通过配置获取用户ID
+    user_id = get_uid_by_config(ev)
+    # 根据配置决定是否使用被AT用户的头像
+    avatar_user_id = ev.at if should_use_other_id(ev) else None
+    uid = await DNABind.get_uid_by_game(user_id, ev.bot_id)
     if not uid:
         await dna_uid_invalid(bot, ev)
         return
 
-    dna_user = await dna_api.get_dna_user(uid, ev.user_id, ev.bot_id)
+    dna_user = await dna_api.get_dna_user(uid, user_id, ev.bot_id)
     if not dna_user:
         await dna_token_invalid(bot, ev)
         return
@@ -77,6 +82,7 @@ async def draw_stamina_img(bot: Bot, ev: Event):
         role_show.roleName,
         user_level=role_show.level,
         other_info=other_info,
+        avatar_user_id=avatar_user_id,
     )
     card.alpha_composite(avatar_title, (-50, 30))
 

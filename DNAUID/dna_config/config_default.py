@@ -119,4 +119,9 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "是否使用简单密函图片",
         False,
     ),
+    "AllowAtQuery": GsBoolConfig(
+        "允许AT查询他人信息",
+        "开启后，可以通过@他人查询对方的角色面板等信息；关闭时，无论是否AT都只能查看自己的信息",
+        True,
+    ),
 }
