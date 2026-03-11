@@ -8,7 +8,8 @@ from collections import OrderedDict
 import httpx
 
 from gsuid_core.models import Event
-from gsuid_core.plugins.DNAUID.DNAUID.dna_config.dna_config import DNAConfig
+
+from ..dna_config.dna_config import DNAConfig
 
 TZ = ZoneInfo("Asia/Shanghai")
 
