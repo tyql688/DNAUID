@@ -286,14 +286,14 @@ async def get_avatar_title_img(
 
     avatar_temp = Image.new("RGBA", (avater_size, avater_size))
 
-    # 如果指定了 avatar_user_id，临时修改 ev.at 以获取指定用户的头像
+    # 如果 avatar_user_id 为 None，则使用发送者自己的头像
+    original_at = ev.at
     if avatar_user_id:
-        original_at = ev.at
         ev.at = avatar_user_id
-        avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
-        ev.at = original_at  # 恢复原始值
     else:
-        avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+        ev.at = None  # 清空 at，确保获取发送者自己的头像
+    avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+    ev.at = original_at  # 恢复原始值
 
     avatar = avatar.resize((avater_size - 60, avater_size - 60))
 

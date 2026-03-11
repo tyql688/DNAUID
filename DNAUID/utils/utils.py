@@ -146,7 +146,7 @@ def get_two_days_ago_date():
 
 def get_uid_by_config(ev: Event) -> str:
     """
-    通过 “是否允许AT查询他人信息” 配置获取uid
+    通过 “允许AT查询他人信息” 配置获取他人或自己的 UID
     """
     # 获取at的id
     at_id = ev.at
@@ -157,8 +157,8 @@ def get_uid_by_config(ev: Event) -> str:
 
 def should_use_other_id(ev: Event) -> bool:
     """
-    通过 “是否允许AT查询他人信息” 配置是否使用其它人的ID
+    通过 “允许AT查询他人信息” 配置是否使用其它人的 UID
     """
     at_id = ev.at
-    allow_at = DNAConfig.get_config("AllowATQuery").data
+    allow_at = DNAConfig.get_config("AllowAtQuery").data
     return bool(at_id and allow_at)
