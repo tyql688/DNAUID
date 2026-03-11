@@ -292,8 +292,10 @@ async def get_avatar_title_img(
         ev.at = avatar_user_id
     else:
         ev.at = None  # 清空 at，确保获取发送者自己的头像
-    avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
-    ev.at = original_at  # 恢复原始值
+    try:
+        avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+    finally:
+        ev.at = original_at  # 恢复原始值
 
     avatar = avatar.resize((avater_size - 60, avater_size - 60))
 
