@@ -15,14 +15,16 @@ async def send_dna_notify(bot: Bot, ev: Event, msg: str, need_at: bool = True):
 
 async def dna_uid_invalid(bot: Bot, ev: Event, need_at: bool = True):
     from ...dna_config.prefix import DNA_PREFIX
+
     is_use_other_id = should_use_other_id(ev)
-    msg =  [
-        "UID无效，请重新绑定",
-        f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
-    ] if not is_use_other_id else [
-        "该用户的 UID 无效",
-        f"请让该用户输入命令【{DNA_PREFIX}绑定 UID】进行绑定"
-    ]
+    msg = (
+        [
+            "UID无效，请重新绑定",
+            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+        ]
+        if not is_use_other_id
+        else ["该用户的 UID 无效", f"请让该用户输入命令【{DNA_PREFIX}绑定 UID】进行绑定"]
+    )
     msg = "\n".join(msg)
     return await send_dna_notify(bot, ev, msg, need_at)
 
