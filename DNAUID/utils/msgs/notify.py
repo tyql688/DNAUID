@@ -48,7 +48,7 @@ def _mask_uid_in_message(msg: str) -> str:
     - UID: [数字] 或 UID:[数字]
     - uid: [数字] 或 uid:[数字]
     - 二重螺旋uid: [数字]
-    - 独立的纯数字UID（13位左右）
+    - 独立的纯数字UID（11-16位）
     """
     # 脱敏 UID: [数字] / uid: [数字] / 二重螺旋uid: [数字]
     patterns = [
@@ -59,6 +59,9 @@ def _mask_uid_in_message(msg: str) -> str:
 
     for pattern, replacement in patterns:
         msg = re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
+
+    # 脱敏独立的纯数字 UID（避免过短数字导致的误伤，限制为 11-16 位）
+    msg = re.sub(r'\b\d{11,16}\b', '***', msg)
 
     return msg
 

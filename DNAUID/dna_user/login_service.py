@@ -112,22 +112,10 @@ class DNALoginService:
         return "\n".join(msg)
 
     async def get_cookie(self) -> Union[List[str], str]:
-        # 检查 UID 是否应该被隐藏（优先群级设置，其次个人设置）
-        uid_hidden = False
-        if self.ev.group_id:
-            # 检查群级强制设置
-            group_force_hidden = await DNAGroupPrivacy.check_uid_hidden(self.ev.group_id, self.ev.bot_id)
-            if group_force_hidden is not None:
-                uid_hidden = group_force_hidden
-            else:
-                # 检查个人设置
-                uid_hidden = await DNAPrivacy.is_uid_hidden(self.ev.user_id, self.ev.bot_id)
-        else:
-            # 私聊场景，只检查个人设置
-            uid_hidden = await DNAPrivacy.is_uid_hidden(self.ev.user_id, self.ev.bot_id)
+        from ..utils.utils import is_uid_hidden
 
-        if uid_hidden:
-            return "您已开启UID隐藏，无法获取UID列表~"
+        # 检查 UID 是否应该被隐藏（优先群级设置，其次个人设置）
+        uid_hidden = await is_uid_hidden(self.ev.user_id, self.ev.bot_id, self.ev.group_id)
 
         uid_list = await DNABind.get_uid_list_by_game(self.ev.user_id, self.ev.bot_id)
         if not uid_list:
