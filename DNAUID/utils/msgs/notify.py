@@ -1,8 +1,9 @@
+import re
+
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
 from ...utils.utils import get_using_id, is_uid_hidden
-import re
 
 title = "[二重螺旋]\n"
 
@@ -52,9 +53,9 @@ def _mask_uid_in_message(msg: str) -> str:
     """
     # 脱敏 UID: [数字] / uid: [数字] / 二重螺旋uid: [数字]
     patterns = [
-        (r'UID:\s*\[?\d+\]?', 'UID: ***'),
-        (r'uid:\s*\[?\d+\]?', 'uid: ***'),
-        (r'二重螺旋uid:\s*\d+', '二重螺旋uid: ***'),
+        (r"UID:\s*\[?\d+\]?", "UID: ***"),
+        (r"uid:\s*\[?\d+\]?", "uid: ***"),
+        (r"二重螺旋uid:\s*\d+", "二重螺旋uid: ***"),
     ]
 
     for pattern, replacement in patterns:
@@ -192,5 +193,5 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
         raise ValueError(f"Invalid code: {code}")
 
     # 查看UID列表时不脱敏（code=2）
-    is_uid_list_view = (code == 2)
+    is_uid_list_view = code == 2
     return await send_dna_notify(bot, ev, "\n".join(code_map[code]), need_at=need_at, is_uid_list_view=is_uid_list_view)
