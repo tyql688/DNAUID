@@ -141,7 +141,6 @@ class SignService:
             self.msg_temp["bbs_signed"] = True
 
         msg_list = []
-        msg_list.append(f"UID: {self.uid}")
         if self.msg_temp["signed"] != "forbidden":
             msg_list.append(f"签到状态: {SIGN_STATUS[self.msg_temp['signed']]}")
         if self.msg_temp["bbs_signed"] != "forbidden":

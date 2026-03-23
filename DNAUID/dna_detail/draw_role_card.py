@@ -26,7 +26,7 @@ from ..utils.image import (
     get_smooth_drawer,
     get_avatar_title_img,
 )
-from ..utils.utils import get_using_id
+from ..utils.utils import get_using_id, is_uid_hidden
 from ..utils.api.model import (
     WeaponDetail,
     RoleInsForTool,
@@ -146,6 +146,8 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
 
     # 提前获取头像与分割线，用于计算总高度
     div_img = get_div()
+    # 检查 UID 是否应该被隐藏
+    uid_hidden = await is_uid_hidden(user_id, ev.bot_id, ev.group_id)
     avatar_title = await get_avatar_title_img(
         ev,
         role_show.roleId,
@@ -153,6 +155,7 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
         user_level=role_show.level,
         other_info=[(i.paramKey, i.paramValue) for i in role_show.params if i.paramKey in ("总活跃天数", "游戏时长")],
         avatar_user_id=user_id,
+        uid_hidden=uid_hidden,
     )
     avatar_title = avatar_title.resize((1000, 1000 * avatar_title.height // avatar_title.width))
     con_weapon_h = 450 if con_weapon_detail else 0

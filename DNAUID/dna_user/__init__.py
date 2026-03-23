@@ -12,7 +12,7 @@ from ..utils.msgs.notify import (
     dna_bind_uid_result,
 )
 from ..dna_config.dna_config import DNAConfig
-from ..utils.database.models import DNABind, DNAUser
+from ..utils.database.models import DNABind, DNAUser, DNAPrivacy, DNAGroupPrivacy
 
 sv_dna_login = SV("dna登录")
 sv_dna_bind = SV("dna绑定")
@@ -103,6 +103,23 @@ async def send_dna_bind_uid_msg(bot: Bot, ev: Event):
 
         return await dna_bind_uid_result(bot, ev, uid, -5)
     elif "查看" in ev.command:
+        # 检查 UID 是否应该被隐藏（优先群级设置，其次个人设置）
+        uid_hidden = False
+        if ev.group_id:
+            # 检查群级强制设置
+            group_force_hidden = await DNAGroupPrivacy.check_uid_hidden(ev.group_id, ev.bot_id)
+            if group_force_hidden is not None:
+                uid_hidden = group_force_hidden
+            else:
+                # 检查个人设置
+                uid_hidden = await DNAPrivacy.is_uid_hidden(qid, ev.bot_id)
+        else:
+            # 私聊场景，只检查个人设置
+            uid_hidden = await DNAPrivacy.is_uid_hidden(qid, ev.bot_id)
+
+        if uid_hidden:
+            return await bot.send("您已开启UID隐藏，无法查看UID列表~")
+
         uid_list = await DNABind.get_uid_list_by_game(qid, ev.bot_id)
         if uid_list:
             uids = "\n".join(uid_list)

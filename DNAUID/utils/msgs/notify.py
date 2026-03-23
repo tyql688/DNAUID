@@ -1,17 +1,66 @@
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
-from ...utils.utils import get_using_id
+from ...utils.utils import get_using_id, is_uid_hidden
+import re
 
 title = "[二重螺旋]\n"
 
 
-async def send_dna_notify(bot: Bot, ev: Event, msg: str, need_at: bool = True):
+async def send_dna_notify(
+    bot: Bot,
+    ev: Event,
+    msg: str,
+    need_at: bool = True,
+    is_uid_list_view: bool = False,
+):
+    """发送DNA通知消息
+
+    Args:
+        bot: Bot实例
+        ev: Event实例
+        msg: 消息内容
+        need_at: 是否需要@发送者
+        is_uid_list_view: 是否为查看UID列表的请求（此时不脱敏）
+    """
+    # 检查是否需要脱敏（除非是查看UID列表）
+    if not is_uid_list_view and ev.group_id:
+        uid_hidden = await is_uid_hidden(ev.user_id, ev.bot_id, ev.group_id)
+        if uid_hidden:
+            msg = _mask_uid_in_message(msg)
+    elif not is_uid_list_view:
+        # 私聊场景
+        uid_hidden = await is_uid_hidden(ev.user_id, ev.bot_id)
+        if uid_hidden:
+            msg = _mask_uid_in_message(msg)
+
     if need_at:
         at_sender = True if ev.group_id else False
     else:
         at_sender = False
     return await bot.send(f"{title}{msg}", at_sender=at_sender)
+
+
+def _mask_uid_in_message(msg: str) -> str:
+    """对消息中的UID进行脱敏处理
+
+    匹配模式：
+    - UID: [数字] 或 UID:[数字]
+    - uid: [数字] 或 uid:[数字]
+    - 二重螺旋uid: [数字]
+    - 独立的纯数字UID（13位左右）
+    """
+    # 脱敏 UID: [数字] / uid: [数字] / 二重螺旋uid: [数字]
+    patterns = [
+        (r'UID:\s*\[?\d+\]?', 'UID: ***'),
+        (r'uid:\s*\[?\d+\]?', 'uid: ***'),
+        (r'二重螺旋uid:\s*\d+', '二重螺旋uid: ***'),
+    ]
+
+    for pattern, replacement in patterns:
+        msg = re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
+
+    return msg
 
 
 async def dna_uid_invalid(bot: Bot, ev: Event, need_at: bool = True):
@@ -93,7 +142,7 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
 
     code_map = {
         4: [
-            f"UID: [{uid}]删除成功！",
+            "UID删除成功！",
         ],
         3: [
             "删除全部UID成功！",
@@ -102,18 +151,18 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
             f"绑定的UID列表为：\n{uid}",
         ],
         1: [
-            f"UID: [{uid}]切换成功！",
+            "UID切换成功！",
         ],
         0: [
-            f"UID: [{uid}]绑定成功！",
+            "UID绑定成功！",
             f"当前仅支持查询部分信息，完整功能请使用【{DNA_PREFIX}登录】",
         ],
         -1: [
-            f"UID: [{uid}]的位数不正确！",
+            "UID的位数不正确！",
             f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
         ],
         -2: [
-            f"UID: [{uid}]已经绑定过了！",
+            "该UID已经绑定过了！",
             f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
         ],
         -3: [
@@ -138,4 +187,7 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
     }
     if code not in code_map:
         raise ValueError(f"Invalid code: {code}")
-    return await send_dna_notify(bot, ev, "\n".join(code_map[code]), need_at=need_at)
+
+    # 查看UID列表时不脱敏（code=2）
+    is_uid_list_view = (code == 2)
+    return await send_dna_notify(bot, ev, "\n".join(code_map[code]), need_at=need_at, is_uid_list_view=is_uid_list_view)

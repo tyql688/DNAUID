@@ -1,6 +1,7 @@
 import time
 import asyncio
 import functools
+from typing import Optional
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from collections import OrderedDict
@@ -172,3 +173,30 @@ async def get_using_id(ev: Event) -> str:
     if privacy and not privacy.allow_peek:
         return ev.user_id
     return ev.at
+
+
+async def is_uid_hidden(user_id: str, bot_id: str, group_id: Optional[str] = None) -> bool:
+    """检查指定用户的 UID 是否应该被隐藏
+
+    优先级：
+    1. 群级强制设置（如果存在）
+    2. 用户个人设置
+
+    Args:
+        user_id: 用户ID
+        bot_id: Bot ID
+        group_id: 群组ID（可选）
+
+    Returns:
+        bool: True 表示 UID 应该被隐藏，False 表示可以显示
+    """
+    from ..utils.database.models import DNAPrivacy, DNAGroupPrivacy
+
+    # 优先检查群级强制设置
+    if group_id:
+        group_force_hidden = await DNAGroupPrivacy.check_uid_hidden(group_id, bot_id)
+        if group_force_hidden is not None:
+            return group_force_hidden
+
+    # 检查用户个人设置
+    return await DNAPrivacy.is_uid_hidden(user_id, bot_id)

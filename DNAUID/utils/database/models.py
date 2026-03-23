@@ -22,6 +22,8 @@ exec_list.extend(
     [
         "ALTER TABLE DNAUser ADD COLUMN d_num TEXT DEFAULT ''",
         "ALTER TABLE DNAUser ADD COLUMN refresh_token TEXT DEFAULT ''",
+        "ALTER TABLE dnaprivacy ADD COLUMN uid_hidden BOOLEAN DEFAULT 0",
+        "ALTER TABLE dna_group_privacy ADD COLUMN force_uid_hidden BOOLEAN DEFAULT NULL",
     ]
 )
 
@@ -411,6 +413,7 @@ class DNAPrivacy(BaseIDModel, table=True):
     bot_id: str = Field(default=None, title="Bot ID")
     group_id: Optional[str] = Field(default=None, title="群组ID")
     allow_peek: bool = Field(default=True, title="允许被窥屏")
+    uid_hidden: bool = Field(default=False, title="隐藏UID")
 
     @classmethod
     @with_session
@@ -437,9 +440,17 @@ class DNAPrivacy(BaseIDModel, table=True):
         session: AsyncSession,
         user_id: str,
         bot_id: str,
-        allow_peek: bool,
+        allow_peek: Optional[bool] = None,
+        uid_hidden: Optional[bool] = None,
     ) -> T_DNAPrivacy:
-        """设置用户的隐私设置"""
+        """设置用户的隐私设置
+
+        Args:
+            user_id: 用户ID
+            bot_id: Bot ID
+            allow_peek: 是否允许被窥屏，None 表示不修改
+            uid_hidden: 是否隐藏UID，None 表示不修改
+        """
         sql = select(cls).where(
             cls.user_id == user_id,
             cls.bot_id == bot_id,
@@ -450,29 +461,45 @@ class DNAPrivacy(BaseIDModel, table=True):
         if data:
             # 更新现有记录
             record = data[0]
-            record.allow_peek = allow_peek
+            if allow_peek is not None:
+                record.allow_peek = allow_peek
+            if uid_hidden is not None:
+                record.uid_hidden = uid_hidden
             return record
         else:
             # 创建新记录
-            new_record = cls(user_id=user_id, bot_id=bot_id, allow_peek=allow_peek)
+            new_record = cls(
+                user_id=user_id,
+                bot_id=bot_id,
+                allow_peek=allow_peek if allow_peek is not None else True,
+                uid_hidden=uid_hidden if uid_hidden is not None else False,
+            )
             session.add(new_record)
             return new_record
 
     @classmethod
     @with_session
-    async def get_group_privacy_settings(
+    async def is_uid_hidden(
         cls: Type[T_DNAPrivacy],
         session: AsyncSession,
+        user_id: str,
         bot_id: str,
-        user_ids: List[str],
-    ) -> List[T_DNAPrivacy]:
-        """获取一组用户的隐私设置"""
+    ) -> bool:
+        """检查用户是否设置了隐藏UID
+
+        返回值:
+        - True: 用户设置了隐藏UID
+        - False: 用户未设置隐藏UID（默认）
+        """
         sql = select(cls).where(
+            cls.user_id == user_id,
             cls.bot_id == bot_id,
-            cls.user_id.in_(user_ids),
         )
         result = await session.execute(sql)
-        return list(result.scalars().all())
+        data = result.scalars().all()
+        if data:
+            return data[0].uid_hidden
+        return False
 
 
 class DNAGroupPrivacy(BaseIDModel, table=True):
@@ -483,6 +510,7 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
     group_id: str = Field(default=None, title="群组ID", unique=True)
     bot_id: str = Field(default=None, title="Bot ID")
     force_allow_peek: Optional[bool] = Field(default=None, title="强制全体允许窥屏")
+    force_uid_hidden: Optional[bool] = Field(default=None, title="强制全体隐藏UID")
 
     @classmethod
     @with_session
@@ -509,14 +537,16 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-        force_allow_peek: Optional[bool],
+        force_allow_peek: Optional[bool] = None,
+        force_uid_hidden: Optional[bool] = None,
     ) -> T_DNAGroupPrivacy:
         """设置群的强制隐私设置
 
-        force_allow_peek:
-        - True: 强制全体开偷窥
-        - False: 强制全体防偷窥
-        - None: 取消强制设置，恢复个人设置
+        Args:
+            group_id: 群组ID
+            bot_id: Bot ID
+            force_allow_peek: 强制全体开偷窥/防偷窥，None 表示不修改
+            force_uid_hidden: 强制全体隐藏UID，None 表示不修改
         """
         sql = select(cls).where(
             cls.group_id == group_id,
@@ -528,11 +558,19 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         if data:
             # 更新现有记录
             record = data[0]
-            record.force_allow_peek = force_allow_peek
+            if force_allow_peek is not None:
+                record.force_allow_peek = force_allow_peek
+            if force_uid_hidden is not None:
+                record.force_uid_hidden = force_uid_hidden
             return record
         else:
             # 创建新记录
-            new_record = cls(group_id=group_id, bot_id=bot_id, force_allow_peek=force_allow_peek)
+            new_record = cls(
+                group_id=group_id,
+                bot_id=bot_id,
+                force_allow_peek=force_allow_peek,
+                force_uid_hidden=force_uid_hidden,
+            )
             session.add(new_record)
             return new_record
 
@@ -559,6 +597,33 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         data = result.scalars().all()
         if data:
             return data[0].force_allow_peek
+        return None
+
+    @classmethod
+    @with_session
+    async def check_uid_hidden(
+        cls: Type[T_DNAGroupPrivacy],
+        session: AsyncSession,
+        group_id: Optional[str],
+        bot_id: str,
+    ) -> Optional[bool]:
+        """检查群是否有强制UID隐藏设置
+
+        返回值:
+        - True: 强制全体隐藏UID
+        - False: 强制全体显示UID
+        - None: 没有强制设置
+        """
+        if not group_id:
+            return None
+        sql = select(cls).where(
+            cls.group_id == group_id,
+            cls.bot_id == bot_id,
+        )
+        result = await session.execute(sql)
+        data = result.scalars().all()
+        if data:
+            return data[0].force_uid_hidden
         return None
 
 

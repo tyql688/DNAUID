@@ -24,7 +24,7 @@ from ..utils.image import (
     get_weapon_attr_img,
     get_avatar_title_img,
 )
-from ..utils.utils import get_using_id
+from ..utils.utils import get_using_id, is_uid_hidden
 from ..utils.api.model import DNARoleForToolRes
 from ..utils.msgs.notify import (
     dna_not_found,
@@ -129,6 +129,8 @@ async def draw_role_info_card(bot: Bot, ev: Event):
     start_y += 650
 
     # title
+    # 检查 UID 是否应该被隐藏
+    uid_hidden = await is_uid_hidden(user_id, ev.bot_id, ev.group_id)
     avatar_title = await get_avatar_title_img(
         ev,
         role_show.roleId,
@@ -136,6 +138,7 @@ async def draw_role_info_card(bot: Bot, ev: Event):
         user_level=role_show.level,
         other_info=[(i.paramKey, i.paramValue) for i in role_show.params if i.paramKey in ("总活跃天数", "游戏时长")],
         avatar_user_id=user_id,
+        uid_hidden=uid_hidden,
     )
     card.alpha_composite(avatar_title, (-50, 400))
 

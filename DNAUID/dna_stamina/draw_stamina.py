@@ -18,7 +18,7 @@ from ..utils.image import (
     get_smooth_drawer,
     get_avatar_title_img,
 )
-from ..utils.utils import get_using_id
+from ..utils.utils import get_using_id, is_uid_hidden
 from ..utils.api.model import DNARoleForToolRes, DNARoleShortNoteRes
 from ..utils.msgs.notify import (
     dna_not_found,
@@ -77,6 +77,8 @@ async def draw_stamina_img(bot: Bot, ev: Event):
     other_info = [
         (i.paramKey, i.paramValue) for i in role_show.params if i.paramKey in ("总活跃天数", "游戏时长", "获得角色数")
     ]
+    # 检查 UID 是否应该被隐藏
+    uid_hidden = await is_uid_hidden(user_id, ev.bot_id, ev.group_id)
     # title
     avatar_title = await get_avatar_title_img(
         ev,
@@ -85,6 +87,7 @@ async def draw_stamina_img(bot: Bot, ev: Event):
         user_level=role_show.level,
         other_info=other_info,
         avatar_user_id=user_id,
+        uid_hidden=uid_hidden,
     )
     card.alpha_composite(avatar_title, (-50, 30))
 

@@ -248,6 +248,7 @@ async def get_avatar_title_img(
     user_level: Optional[int] = None,
     other_info: Optional[list[tuple[str, str]]] = None,
     avatar_user_id: Optional[str] = None,
+    uid_hidden: bool = False,
 ):
     from .fonts.dna_fonts import (
         dna_font_20,
@@ -267,20 +268,22 @@ async def get_avatar_title_img(
         "lm",
     )
 
-    get_smooth_drawer().rounded_rectangle(
-        (320, 140, 320 + 330, 140 + 40),
-        15,
-        COLOR_PALE_GOLDENROD,
-        target=img,
-    )
+    # 仅在 UID 未隐藏时显示 UID
+    if not uid_hidden:
+        get_smooth_drawer().rounded_rectangle(
+            (320, 140, 320 + 330, 140 + 40),
+            15,
+            COLOR_PALE_GOLDENROD,
+            target=img,
+        )
 
-    draw.text(
-        (330, 160),
-        f"UID {uid}",
-        COLOR_BLACK,
-        dna_font_30,
-        "lm",
-    )
+        draw.text(
+            (330, 160),
+            f"UID {uid}",
+            COLOR_BLACK,
+            dna_font_30,
+            "lm",
+        )
 
     avater_size = 190
 

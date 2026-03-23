@@ -1,4 +1,5 @@
 import uuid
+import re
 from typing import List, Union, Optional
 
 from gsuid_core.bot import Bot
@@ -6,11 +7,22 @@ from gsuid_core.models import Event
 
 from ..utils import dna_api
 from ..utils.api.model import DNALoginRes, DNARoleListRes
-from ..utils.database.models import DNABind, DNAUser
+from ..utils.database.models import DNABind, DNAUser, DNAPrivacy, DNAGroupPrivacy
 from ..utils.constants.constants import DNA_GAME_ID
 
 complete_error_msg = "您尚未注册二重螺旋账号，请先在【皎皎角】进行角色绑定"
 role_error_msg = "未找到二重螺旋角色，请在皎皎角注册账号后重新登录"
+
+
+def _mask_uid_in_text(text: str) -> str:
+    """对文本中的UID进行脱敏"""
+    patterns = [
+        (r'二重螺旋uid:\s*\d+', '二重螺旋uid: ***'),
+        (r'UID:\s*\[?\d+\]?', 'UID: ***'),
+    ]
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 class DNALoginService:
@@ -96,10 +108,27 @@ class DNALoginService:
 
         msg = ["登录成功, 已为您绑定以下角色:"]
         for role in role_ids_msg:
-            msg.append(f"- UID: [{role['uid']}] 名字: {role['name']}")
+            msg.append(f"- 名字: {role['name']}")
         return "\n".join(msg)
 
     async def get_cookie(self) -> Union[List[str], str]:
+        # 检查 UID 是否应该被隐藏（优先群级设置，其次个人设置）
+        uid_hidden = False
+        if self.ev.group_id:
+            # 检查群级强制设置
+            group_force_hidden = await DNAGroupPrivacy.check_uid_hidden(self.ev.group_id, self.ev.bot_id)
+            if group_force_hidden is not None:
+                uid_hidden = group_force_hidden
+            else:
+                # 检查个人设置
+                uid_hidden = await DNAPrivacy.is_uid_hidden(self.ev.user_id, self.ev.bot_id)
+        else:
+            # 私聊场景，只检查个人设置
+            uid_hidden = await DNAPrivacy.is_uid_hidden(self.ev.user_id, self.ev.bot_id)
+
+        if uid_hidden:
+            return "您已开启UID隐藏，无法获取UID列表~"
+
         uid_list = await DNABind.get_uid_list_by_game(self.ev.user_id, self.ev.bot_id)
         if not uid_list:
             return "您当前未绑定token或者token已全部失效\n"
@@ -116,4 +145,8 @@ class DNALoginService:
         if not msg:
             return "您当前未绑定token或者token已全部失效\n"
 
-        return "\n".join(msg)
+        result = "\n".join(msg)
+        # 应用UID脱敏
+        if uid_hidden:
+            result = _mask_uid_in_text(result)
+        return result

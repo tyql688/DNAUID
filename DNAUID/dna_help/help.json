@@ -28,7 +28,7 @@
       },
       {
         "name": "查看UID列表",
-        "desc": "查看UID列表",
+        "desc": "查看绑定的UID列表（不受UID隐藏影响）",
         "eg": "查看",
         "need_ck": false,
         "need_sk": false,
@@ -221,6 +221,22 @@
         "need_ck": false,
         "need_sk": false,
         "need_admin": false
+      },
+      {
+        "name": "隐藏UID",
+        "desc": "在生成的卡片中隐藏自己的UID",
+        "eg": "隐藏UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
+        "name": "显示UID",
+        "desc": "在生成的卡片中显示自己的UID",
+        "eg": "显示UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
       }
     ]
   },
@@ -317,6 +333,46 @@
         "name": "取消全体偷窥",
         "desc": "取消全体偷窥设置，恢复个人设置",
         "eg": "取消全体偷窥",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "指定隐藏UID",
+        "desc": "为会话中被艾特的玩家开启UID隐藏",
+        "eg": "指定隐藏UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "指定显示UID",
+        "desc": "为会话中被艾特的玩家关闭UID隐藏",
+        "eg": "指定显示UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "全体隐藏UID",
+        "desc": "强制会话中所有玩家隐藏UID",
+        "eg": "全体隐藏UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "全体显示UID",
+        "desc": "强制会话中所有玩家显示UID",
+        "eg": "全体显示UID",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "取消全体UID隐藏",
+        "desc": "取消全体UID隐藏设置，恢复个人设置",
+        "eg": "取消全体UID隐藏",
         "need_ck": false,
         "need_sk": false,
         "need_admin": true

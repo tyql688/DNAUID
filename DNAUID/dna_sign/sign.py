@@ -41,8 +41,8 @@ async def sign_task(
     result_msgs = []
 
     def return_msg():
-        for uid in expire_uids:
-            result_msgs.append(f"失效UID: {uid}")
+        for _uid in expire_uids:
+            result_msgs.append("账号已失效")
         return result_msgs
 
     if not dna_user.cookie or dna_user.status == "无效":

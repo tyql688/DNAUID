@@ -21,6 +21,7 @@ from ..utils.image import (
     get_avatar_title_img,
     download_pic_from_url,
 )
+from ..utils.utils import is_uid_hidden
 from ..utils.api.model import (
     RoleShowForTool,
     DNARoleForToolRes,
@@ -53,6 +54,7 @@ async def _draw_sign_calendar(
     sign_data: DNACalendarSignRes,
     task_process: DNATaskProcessRes,
     bbs_total_sign_in_day: int,
+    uid_hidden: bool = False,
 ):
     task_list = task_process.dailyTask if task_process else None
 
@@ -76,6 +78,7 @@ async def _draw_sign_calendar(
         role_show.roleId,
         role_show.roleName,
         user_level=role_show.level,
+        uid_hidden=uid_hidden,
     )
     card.alpha_composite(avatar_title, (0, start_y))
     start_y += title_h
@@ -214,11 +217,15 @@ async def draw_sign_calendar(bot: Bot, ev: Event):
     default_role = DNARoleForToolRes.model_validate(default_role.data)
     role_show = default_role.roleInfo.roleShow
 
+    # 检查 UID 是否应该被隐藏
+    uid_hidden = await is_uid_hidden(ev.user_id, ev.bot_id, ev.group_id)
+
     msg = await _draw_sign_calendar(
         ev,
         role_show,
         sign_data,
         task_process,
         bbs_total_sign_in_day,
+        uid_hidden,
     )
     await bot.send(msg)
