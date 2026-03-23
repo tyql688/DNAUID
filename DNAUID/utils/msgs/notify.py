@@ -62,7 +62,7 @@ def _mask_uid_in_message(msg: str) -> str:
         msg = re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
 
     # 脱敏独立的纯数字 UID（避免过短数字导致的误伤，限制为 11-16 位）
-    msg = re.sub(r'\b\d{11,16}\b', '***', msg)
+    msg = re.sub(r"\b\d{11,16}\b", "***", msg)
 
     return msg
 

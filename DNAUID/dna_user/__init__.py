@@ -5,6 +5,7 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
 from ..utils import dna_api
+from ..utils.utils import is_uid_hidden
 from .login_router import get_cookie, page_login
 from ..utils.msgs.notify import (
     dna_login_fail,
@@ -13,7 +14,6 @@ from ..utils.msgs.notify import (
 )
 from ..dna_config.dna_config import DNAConfig
 from ..utils.database.models import DNABind, DNAUser
-from ..utils.utils import is_uid_hidden
 
 sv_dna_login = SV("dna登录")
 sv_dna_bind = SV("dna绑定")
