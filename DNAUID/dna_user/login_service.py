@@ -1,5 +1,5 @@
-import uuid
 import re
+import uuid
 from typing import List, Union, Optional
 
 from gsuid_core.bot import Bot
@@ -17,8 +17,8 @@ role_error_msg = "未找到二重螺旋角色，请在皎皎角注册账号后�
 def _mask_uid_in_text(text: str) -> str:
     """对文本中的UID进行脱敏"""
     patterns = [
-        (r'二重螺旋uid:\s*\d+', '二重螺旋uid: ***'),
-        (r'UID:\s*\[?\d+\]?', 'UID: ***'),
+        (r"二重螺旋uid:\s*\d+", "二重螺旋uid: ***"),
+        (r"UID:\s*\[?\d+\]?", "UID: ***"),
     ]
     for pattern, replacement in patterns:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)

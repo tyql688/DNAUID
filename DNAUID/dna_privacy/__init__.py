@@ -180,6 +180,7 @@ async def cancel_peek_all(bot: Bot, ev: Event):
 
 # ==================== UID隐藏控制命令 ====================
 
+
 @sv_dna_privacy.on_fullmatch("隐藏UID")
 async def enable_uid_hidden(bot: Bot, ev: Event):
     """个人开启UID隐藏"""
