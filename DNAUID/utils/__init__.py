@@ -7,6 +7,7 @@ from .utils import (
     timed_async_cache,
     get_yesterday_date,
     get_two_days_ago_date,
+    mask_uid_in_text,
 )
 from .dna_api import dna_api
 
@@ -20,4 +21,5 @@ __all__ = [
     "get_two_days_ago_date",
     "get_datetime",
     "TZ",
+    "mask_uid_in_text",
 ]

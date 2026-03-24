@@ -18,6 +18,10 @@ from gsuid_core.utils.database.base_models import (
 
 from ..utils import get_today_date
 
+
+# Sentinel value to indicate "no change" for optional boolean fields
+NO_CHANGE = object()
+
 exec_list.extend(
     [
         "ALTER TABLE DNAUser ADD COLUMN d_num TEXT DEFAULT ''",
@@ -487,18 +491,26 @@ class DNAPrivacy(BaseIDModel, table=True):
     ) -> bool:
         """检查用户是否设置了隐藏UID
 
+        查询全局配置（group_id is None），确保结果确定性。
+
         返回值:
         - True: 用户设置了隐藏UID
         - False: 用户未设置隐藏UID（默认）
         """
-        sql = select(cls).where(
-            cls.user_id == user_id,
-            cls.bot_id == bot_id,
+        sql = (
+            select(cls)
+            .where(
+                cls.user_id == user_id,
+                cls.bot_id == bot_id,
+                cls.group_id.is_(None),
+            )
+            .order_by(cls.id.desc())
+            .limit(1)
         )
         result = await session.execute(sql)
-        data = result.scalars().all()
-        if data:
-            return data[0].uid_hidden
+        record = result.scalar_one_or_none()
+        if record is not None:
+            return record.uid_hidden
         return False
 
 
@@ -537,16 +549,16 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-        force_allow_peek: Optional[bool] = None,
-        force_uid_hidden: Optional[bool] = None,
+        force_allow_peek: Optional[bool] = NO_CHANGE,
+        force_uid_hidden: Optional[bool] = NO_CHANGE,
     ) -> T_DNAGroupPrivacy:
         """设置群的强制隐私设置
 
         Args:
             group_id: 群组ID
             bot_id: Bot ID
-            force_allow_peek: 强制全体开偷窥/防偷窥，None 表示不修改
-            force_uid_hidden: 强制全体隐藏UID，None 表示不修改
+            force_allow_peek: 强制全体开偷窥/防偷窥，NO_CHANGE 表示不修改，None 表示清除设置
+            force_uid_hidden: 强制全体隐藏UID，NO_CHANGE 表示不修改，None 表示清除设置
         """
         sql = select(cls).where(
             cls.group_id == group_id,
@@ -558,9 +570,9 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         if data:
             # 更新现有记录
             record = data[0]
-            if force_allow_peek is not None:
+            if force_allow_peek is not NO_CHANGE:
                 record.force_allow_peek = force_allow_peek
-            if force_uid_hidden is not None:
+            if force_uid_hidden is not NO_CHANGE:
                 record.force_uid_hidden = force_uid_hidden
             return record
         else:
@@ -568,8 +580,8 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
             new_record = cls(
                 group_id=group_id,
                 bot_id=bot_id,
-                force_allow_peek=force_allow_peek,
-                force_uid_hidden=force_uid_hidden,
+                force_allow_peek=force_allow_peek if force_allow_peek is not NO_CHANGE else None,
+                force_uid_hidden=force_uid_hidden if force_uid_hidden is not NO_CHANGE else None,
             )
             session.add(new_record)
             return new_record

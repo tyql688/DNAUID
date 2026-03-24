@@ -1,4 +1,3 @@
-import re
 import uuid
 from typing import List, Union, Optional
 
@@ -9,20 +8,10 @@ from ..utils import dna_api
 from ..utils.api.model import DNALoginRes, DNARoleListRes
 from ..utils.database.models import DNABind, DNAUser, DNAPrivacy, DNAGroupPrivacy
 from ..utils.constants.constants import DNA_GAME_ID
+from ..utils.utils import mask_uid_in_text
 
 complete_error_msg = "您尚未注册二重螺旋账号，请先在【皎皎角】进行角色绑定"
 role_error_msg = "未找到二重螺旋角色，请在皎皎角注册账号后重新登录"
-
-
-def _mask_uid_in_text(text: str) -> str:
-    """对文本中的UID进行脱敏"""
-    patterns = [
-        (r"二重螺旋uid:\s*\d+", "二重螺旋uid: ***"),
-        (r"UID:\s*\[?\d+\]?", "UID: ***"),
-    ]
-    for pattern, replacement in patterns:
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-    return text
 
 
 class DNALoginService:

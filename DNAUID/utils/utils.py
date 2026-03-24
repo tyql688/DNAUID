@@ -1,6 +1,7 @@
 import time
 import asyncio
 import functools
+import re
 from typing import Optional
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -200,3 +201,29 @@ async def is_uid_hidden(user_id: str, bot_id: str, group_id: Optional[str] = Non
 
     # 检查用户个人设置
     return await DNAPrivacy.is_uid_hidden(user_id, bot_id)
+
+
+# 预编译UID脱敏正则表达式
+_UID_MASK_PATTERNS = [
+    (re.compile(r"UID:\s*\[?\d+\]?", re.IGNORECASE), "UID: ***"),
+    (re.compile(r"二重螺旋uid:\s*\d+", re.IGNORECASE), "二重螺旋uid: ***"),
+]
+
+
+def mask_uid_in_text(text: str) -> str:
+    """对文本中的UID进行脱敏处理
+
+    匹配模式：
+    - UID: [数字] 或 UID:[数字]
+    - uid: [数字] 或 uid:[数字]
+    - 二重螺旋uid: [数字]
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        str: 脱敏后的文本
+    """
+    for pattern, replacement in _UID_MASK_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text

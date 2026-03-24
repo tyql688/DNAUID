@@ -1,9 +1,7 @@
-import re
-
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
-from ...utils.utils import get_using_id, is_uid_hidden
+from ...utils.utils import get_using_id, is_uid_hidden, mask_uid_in_text
 
 title = "[二重螺旋]\n"
 
@@ -45,26 +43,10 @@ async def send_dna_notify(
 def _mask_uid_in_message(msg: str) -> str:
     """对消息中的UID进行脱敏处理
 
-    匹配模式：
-    - UID: [数字] 或 UID:[数字]
-    - uid: [数字] 或 uid:[数字]
-    - 二重螺旋uid: [数字]
-    - 独立的纯数字UID（11-16位）
+    使用共享的 mask_uid_in_text 工具函数进行脱敏。
+    注意：此函数不再匹配独立的纯数字UID，以避免误伤其他数字。
     """
-    # 脱敏 UID: [数字] / uid: [数字] / 二重螺旋uid: [数字]
-    patterns = [
-        (r"UID:\s*\[?\d+\]?", "UID: ***"),
-        (r"uid:\s*\[?\d+\]?", "uid: ***"),
-        (r"二重螺旋uid:\s*\d+", "二重螺旋uid: ***"),
-    ]
-
-    for pattern, replacement in patterns:
-        msg = re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
-
-    # 脱敏独立的纯数字 UID（避免过短数字导致的误伤，限制为 11-16 位）
-    msg = re.sub(r'\b\d{11,16}\b', '***', msg)
-
-    return msg
+    return mask_uid_in_text(msg)
 
 
 async def dna_uid_invalid(bot: Bot, ev: Event, need_at: bool = True):
