@@ -1,6 +1,6 @@
 import asyncio
 import functools
-from typing import Any, Dict, List, Type, TypeVar, Optional
+from typing import Any, Dict, List, Type, Union, TypeVar, Optional
 
 from sqlmodel import Field, col, select
 from sqlalchemy import null, delete, update
@@ -18,7 +18,6 @@ from gsuid_core.utils.database.base_models import (
 
 from ..utils import get_today_date
 
-# Sentinel value to indicate "no change" for optional boolean fields
 NO_CHANGE = object()
 
 exec_list.extend(
@@ -548,8 +547,8 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-        force_allow_peek: Optional[bool] = NO_CHANGE,
-        force_uid_hidden: Optional[bool] = NO_CHANGE,
+        force_allow_peek: Union[bool, None, Any] = NO_CHANGE,
+        force_uid_hidden: Union[bool, None, Any] = NO_CHANGE,
     ) -> T_DNAGroupPrivacy:
         """设置群的强制隐私设置
 
