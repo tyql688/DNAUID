@@ -6,7 +6,7 @@ from gsuid_core.models import Event
 
 from ..utils import dna_api
 from ..utils.api.model import DNALoginRes, DNARoleListRes
-from ..utils.database.models import DNABind, DNAUser, DNAPrivacy, DNAGroupPrivacy
+from ..utils.database.models import DNABind, DNAUser
 from ..utils.constants.constants import DNA_GAME_ID
 from ..utils.utils import mask_uid_in_text
 
