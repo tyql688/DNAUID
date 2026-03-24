@@ -18,7 +18,6 @@ from gsuid_core.utils.database.base_models import (
 
 from ..utils import get_today_date
 
-
 # Sentinel value to indicate "no change" for optional boolean fields
 NO_CHANGE = object()
 

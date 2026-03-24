@@ -5,10 +5,10 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
 from ..utils import dna_api
+from ..utils.utils import mask_uid_in_text
 from ..utils.api.model import DNALoginRes, DNARoleListRes
 from ..utils.database.models import DNABind, DNAUser
 from ..utils.constants.constants import DNA_GAME_ID
-from ..utils.utils import mask_uid_in_text
 
 complete_error_msg = "您尚未注册二重螺旋账号，请先在【皎皎角】进行角色绑定"
 role_error_msg = "未找到二重螺旋角色，请在皎皎角注册账号后重新登录"
@@ -125,5 +125,5 @@ class DNALoginService:
         result = "\n".join(msg)
         # 应用UID脱敏
         if uid_hidden:
-            result = _mask_uid_in_text(result)
+            result = mask_uid_in_text(result)
         return result
