@@ -153,6 +153,10 @@ async def get_using_id(ev: Event) -> str:
     if not ev.at:
         return ev.user_id
 
+    # 用户AT自己，查询自己的数据，不受偷窥权限限制
+    if ev.at == ev.user_id:
+        return ev.user_id
+
     # 功能未开启
     allow_config = DNAConfig.get_config("AllowAtQuery")
     if not allow_config or not allow_config.data:
