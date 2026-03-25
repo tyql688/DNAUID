@@ -68,8 +68,7 @@ class ItemTemp(BaseModel):
 
 async def draw_role_info_card(bot: Bot, ev: Event):
     user_id = await get_using_id(ev)
-    # 检查是否被防偷窥阻止（有@目标但被阻止）
-    if ev.at and user_id == ev.user_id:
+    if ev.at and user_id == ev.user_id and ev.at != ev.user_id:
         await dna_peek_blocked(bot, ev)
         return
     uid = await DNABind.get_uid_by_game(user_id, ev.bot_id)

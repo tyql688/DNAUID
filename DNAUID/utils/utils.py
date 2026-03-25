@@ -146,7 +146,6 @@ def get_two_days_ago_date():
 
 
 async def get_using_id(ev: Event) -> str:
-    from ..dna_config.dna_config import DNAConfig
     from ..utils.database.models import DNAPrivacy, DNAGroupPrivacy
 
     # 没有 @ 目标
@@ -155,11 +154,6 @@ async def get_using_id(ev: Event) -> str:
 
     # 用户AT自己，查询自己的数据，不受偷窥权限限制
     if ev.at == ev.user_id:
-        return ev.user_id
-
-    # 功能未开启
-    allow_config = DNAConfig.get_config("AllowAtQuery")
-    if not allow_config or not allow_config.data:
         return ev.user_id
 
     # 检查群是否有强制隐私设置（优先级最高）

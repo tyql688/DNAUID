@@ -193,6 +193,14 @@
         "need_sk": false,
         "need_admin": false
       },
+       {
+        "name": "日常",
+        "desc": "日常查询",
+        "eg": "日常",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
       {
         "name": "日历",
         "desc": "日历",
