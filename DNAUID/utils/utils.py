@@ -165,6 +165,10 @@ async def get_using_id(ev: Event) -> str:
     if not ev.at:
         return ev.user_id
 
+    # 过滤无效的 at 数据
+    if ev.at == ev.bot_id or ev.at == ev.real_bot_id:
+        return ev.user_id
+
     # 用户AT自己，查询自己的数据，不受偷窥权限限制
     if ev.at == ev.user_id:
         return ev.user_id
@@ -190,6 +194,50 @@ async def get_using_id(ev: Event) -> str:
     if privacy and not privacy.allow_peek:
         return ev.user_id
     return ev.at
+
+
+def has_valid_at(ev: Event) -> bool:
+    """检查是否存在有效的 @ 目标
+
+    过滤无效的 at 数据
+
+    Args:
+        ev: 事件对象
+
+    Returns:
+        bool: True 表示存在有效的 @ 目标
+    """
+    if not ev.at:
+        return False
+    # 过滤无效的 at 数据（如 QQ 官方平台传入平台名称而非用户 ID）
+    if ev.at == ev.bot_id or ev.at == ev.real_bot_id:
+        return False
+    return True
+
+
+async def is_peek_blocked(ev: Event, user_id: str) -> bool:
+    """检查是否因偷窥权限被阻止查询他人数据
+
+    判断逻辑：
+    1. 存在有效的 @ 目标（过滤无效 at 数据）
+    2. @ 的不是自己
+    3. get_using_id 返回的是自己的 ID
+
+    Args:
+        ev: 事件对象
+        user_id: get_using_id 返回的用户 ID
+
+    Returns:
+        bool: True 表示被阻止，应该显示防偷窥提示
+    """
+    # 没有有效的 @ 目标
+    if not has_valid_at(ev):
+        return False
+    # @ 的是自己
+    if ev.at == ev.user_id:
+        return False
+    # 返回的是自己的 ID，说明被阻止了
+    return user_id == ev.user_id
 
 
 async def is_uid_hidden(user_id: str, bot_id: str, group_id: Optional[str] = None) -> bool:

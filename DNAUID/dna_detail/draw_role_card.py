@@ -26,7 +26,7 @@ from ..utils.image import (
     get_smooth_drawer,
     get_avatar_title_img,
 )
-from ..utils.utils import get_using_id, is_uid_hidden
+from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
 from ..utils.api.model import (
     WeaponDetail,
     RoleInsForTool,
@@ -83,7 +83,7 @@ weapon_attr_list = [
 
 async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     user_id = await get_using_id(ev)
-    if ev.at and user_id == ev.user_id and ev.at != ev.user_id:
+    if await is_peek_blocked(ev, user_id):
         await dna_peek_blocked(bot, ev)
         return
     uid = await DNABind.get_uid_by_game(user_id, ev.bot_id)

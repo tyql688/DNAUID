@@ -24,7 +24,7 @@ from ..utils.image import (
     get_weapon_attr_img,
     get_avatar_title_img,
 )
-from ..utils.utils import get_using_id, is_uid_hidden
+from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
 from ..utils.api.model import DNARoleForToolRes
 from ..utils.msgs.notify import (
     dna_not_found,
@@ -68,7 +68,7 @@ class ItemTemp(BaseModel):
 
 async def draw_role_info_card(bot: Bot, ev: Event):
     user_id = await get_using_id(ev)
-    if ev.at and user_id == ev.user_id and ev.at != ev.user_id:
+    if await is_peek_blocked(ev, user_id):
         await dna_peek_blocked(bot, ev)
         return
     uid = await DNABind.get_uid_by_game(user_id, ev.bot_id)
