@@ -42,7 +42,7 @@ def get_bg_list():
 
 async def draw_stamina_img(bot: Bot, ev: Event):
     user_id = await get_using_id(ev)
-    if await is_peek_blocked(ev, user_id):
+    if is_peek_blocked(ev, user_id):
         await dna_peek_blocked(bot, ev)
         return
     uid = await DNABind.get_uid_by_game(user_id, ev.bot_id)
