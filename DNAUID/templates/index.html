@@ -365,7 +365,7 @@
               }
 
               $.ajax({
-                url: '{{ server_url }}/dna/getSmsCode',
+                url: '/dna/getSmsCode',
                 type: 'POST',
                 data: JSON.stringify(data),
                 contentType: 'application/json',
@@ -416,7 +416,7 @@
         }
         e.preventDefault()
         $.ajax({
-          url: '{{ server_url }}/dna/login',
+          url: '/dna/login',
           type: 'POST',
           data: JSON.stringify(data),
           contentType: 'application/json',
