@@ -130,7 +130,9 @@ async def send_dna_bind_uid_msg(bot: Bot, ev: Event):
         if not uid:
             return await dna_bind_uid_result(bot, ev, uid, -6)
         data = await DNABind.delete_uid(qid, ev.bot_id, uid)
-        return await dna_bind_uid_result(bot, ev, uid, data)
+        if data == -1:
+            return await dna_bind_uid_result(bot, ev, uid, -6)
+        return await dna_bind_uid_result(bot, ev, uid, 4)
 
 
 @sv_dna_get_ck.on_fullmatch(
