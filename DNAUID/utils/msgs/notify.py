@@ -77,8 +77,14 @@ async def dna_not_found(bot: Bot, ev: Event, resource_name: str, need_at: bool =
 
 
 async def dna_peek_blocked(bot: Bot, ev: Event, need_at: bool = True):
-    """被防偷窥阻止时的提示"""
-    return await send_dna_notify(bot, ev, "该用户开启了防偷窥，无法查看其游戏信息~", need_at)
+    from ...dna_config.dna_config import DNAConfig
+
+    allow_config = DNAConfig.get_config("AllowAtQuery")
+    if not allow_config or not allow_config.data:
+        msg = "AT查询功能未开启，无法查看他人游戏信息"
+    else:
+        msg = "该用户开启了防偷窥，无法查看其游戏信息"
+    return await send_dna_notify(bot, ev, msg, need_at)
 
 
 async def dna_not_unlocked(bot: Bot, ev: Event, resource_name: str, need_at: bool = True):
