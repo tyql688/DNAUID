@@ -14,7 +14,7 @@ ios_base_header = {
 }
 
 android_base_header = {
-    "version": "1.3.0",
+    "version": "1.3.2",
     "source": "android",
     "Content-Type": CONTENT_TYPE,
     "User-Agent": "okhttp/3.10.0",
