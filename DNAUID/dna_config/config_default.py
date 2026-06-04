@@ -29,13 +29,19 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
     "AnnMinuteCheck": GsIntConfig("公告推送时间检测（单位min）", "公告推送时间检测（单位min）", 10, 60),
     "DNALoginUrl": GsStrConfig(
         "二重螺旋登录url",
-        "用于设置DNAUID登录界面的配置",
+        "local 模式：登录页对外域名，留空则用 Core 的 HOST/PORT 并自动探测公网 IP；外置模式：必填 dna-login 服务的 base URL",
         "",
     ),
-    "DNALoginUrlSelf": GsBoolConfig(
-        "强制【二重螺旋登录url】为自己的域名",
-        "强制【二重螺旋登录url】为自己的域名",
-        False,
+    "DNALoginTransport": GsStrConfig(
+        "登录接入方式",
+        "local = Core 进程内嵌登录；http_poll / sse / ws = 走外置 dna-login 服务（EdgeOne 部署只支持 http_poll）",
+        "local",
+        options=["local", "http_poll", "sse", "ws"],
+    ),
+    "DNALoginSecret": GsStrConfig(
+        "外置登录共享密钥",
+        "外置模式下与 dna-login 服务的 SHARED_SECRET 一致；HMAC 校验，留空则不签名",
+        "",
     ),
     "DNATencentWord": GsBoolConfig(
         "腾讯文档",
