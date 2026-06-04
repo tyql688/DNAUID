@@ -7,7 +7,7 @@ from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
 from ..utils.msgs.notify import dna_not_found
-from ..utils.name_convert import alias_to_char_name, char_name_to_char_id
+from ..utils.name_convert import alias_to_char_name
 from ..dna_config.dna_config import DNAConfig
 
 GUIDE_PATH = Path(__file__).parent / "texture2d"
@@ -19,10 +19,6 @@ async def get_guide(bot: Bot, ev: Event, char_name: str):
         await dna_not_found(bot, ev, f"角色别名【{char_name}】")
         return
 
-    char_id = char_name_to_char_id(real_char_name)
-    if not char_id:
-        await dna_not_found(bot, ev, f"角色【{char_name}】的CharId")
-        return
     char_name = real_char_name
 
     logger.debug(f"[二重螺旋] 开始获取{char_name}图鉴")
@@ -61,7 +57,7 @@ async def get_guide(bot: Bot, ev: Event, char_name: str):
     await send_guide(config, imgs_result, bot)
 
 
-async def get_guide_pic(guide_path: Path, pattern: re.Pattern, guide_author: str):
+async def get_guide_pic(guide_path: Path, pattern: re.Pattern[str], guide_author: str):
     imgs = []
     if not guide_path.is_dir():
         logger.warning(f"[二重螺旋] 攻略路径错误 {guide_path}")
@@ -92,7 +88,7 @@ async def process_images_new(_dir: Path):
     return imgs
 
 
-async def send_guide(config, imgs: list, bot: Bot):
+async def send_guide(config, imgs: list[str], bot: Bot):
     # 处理发送逻辑
     if "all" in config:
         await bot.send(imgs)
