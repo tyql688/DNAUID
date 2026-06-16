@@ -4,6 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw
 
 from gsuid_core.bot import Bot
+from gsuid_core.logger import logger
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
@@ -43,6 +44,7 @@ from ..utils.msgs.notify import (
     dna_token_invalid,
 )
 from ..utils.name_convert import alias_to_char_name, char_name_to_char_id
+from ..utils.original_image import cache_original_image
 from ..utils.database.models import DNABind
 from ..utils.fonts.dna_fonts import (
     dna_font_18,
@@ -50,6 +52,7 @@ from ..utils.fonts.dna_fonts import (
     dna_font_26,
     dna_font_30,
 )
+from ..utils.master_char_const import MASTER_CHAR_NAME_BY_ID, is_master_char_id
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
 prop_info_bar1 = Image.open(TEXT_PATH / "prop_info_bar1.png")
@@ -116,9 +119,15 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     default_role = DNARoleForToolRes.model_validate(default_role.data)
     role_show = default_role.roleInfo.roleShow
 
-    role_char_simple: Optional[RoleInsForTool] = next(
-        (i for i in role_show.roleChars if str(i.charId) == char_id), None
-    )
+    if is_master_char_id(char_id):
+        role_char_simple: Optional[RoleInsForTool] = next(
+            (i for i in role_show.roleChars if is_master_char_id(i.charId)), None
+        )
+        if role_char_simple is not None:
+            char_id = str(role_char_simple.charId)
+            char_name = MASTER_CHAR_NAME_BY_ID.get(char_id, char_name)
+    else:
+        role_char_simple = next((i for i in role_show.roleChars if str(i.charId) == char_id), None)
     if not role_char_simple:
         await dna_not_found(bot, ev, f"展柜角色【{char_name}】")
         return
@@ -162,8 +171,10 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     total_h = 850 + div_img.height + global_skill_bg.height + con_weapon_h + div_img.height + avatar_title.height + 600
     card = get_dna_bg(1000, total_h, "bg2")
 
-    role_panel_img = get_role_panel_img(char_id)
-    if role_panel_img is not None:
+    original_img_path: Path | None = None
+    role_panel = get_role_panel_img(char_id)
+    if role_panel is not None:
+        original_img_path, role_panel_img = role_panel
         panel_size = (1000, 850)
         portrait_size = (600, 850)
         panel_fade = 72
@@ -479,4 +490,6 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
 
     card = add_footer(card, 600)
     card = await convert_img(card)
-    await bot.send(card)
+    message_ids = await bot.send(card, wait_recall=True)
+    logger.debug(f"[DNA Detail] role panel message_ids={message_ids}")
+    cache_original_image(message_ids, original_img_path)

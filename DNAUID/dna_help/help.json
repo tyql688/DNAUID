@@ -448,5 +448,59 @@
         "need_admin": true
       }
     ]
+  },
+  "面板图管理": {
+    "pm": 0,
+    "desc": "角色面板图管理",
+    "data": [
+      {
+        "name": "上传角色面板图",
+        "desc": "上传指定角色的自定义面板图",
+        "eg": "上传菲娜面板图",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "角色面板图列表",
+        "desc": "查看指定角色已上传的面板图和ID",
+        "eg": "菲娜面板图列表",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "删除指定面板图",
+        "desc": "按列表中的ID删除指定角色的一张面板图",
+        "eg": "删除菲娜面板图imageid",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "删除全部面板图",
+        "desc": "删除指定角色的全部面板图",
+        "eg": "删除菲娜全部面板图",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "原图删除",
+        "desc": "引用角色面板图，删除对应的上传原图",
+        "eg": "原图删除",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "压缩面板图",
+        "desc": "压缩已上传的角色面板图",
+        "eg": "压缩面板图",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      }
+    ]
   }
 }

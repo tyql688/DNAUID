@@ -120,6 +120,11 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "开启就显示全部，关闭只显示已拥有的角色和武器",
         True,
     ),
+    "RoleOriginalImage": GsBoolConfig(
+        "角色原图功能开关",
+        "开启后，可以引用角色面板图获取上传原图",
+        True,
+    ),
     "MHSimplePicture": GsBoolConfig(
         "是否使用简单密函图片",
         "是否使用简单密函图片",

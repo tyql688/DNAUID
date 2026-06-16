@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 from ..utils.api.model import RoleShowForTool
+from ..utils.master_char_const import MASTER_CHAR_ID_BY_NAME, MASTER_CHAR_ALIAS_TO_NAME
 from ..utils.resource.RESOURCE_PATH import (
     ID2NAME_PATH,
     CHAR_ALIAS_PATH,
@@ -115,6 +116,8 @@ def builtin_alias_list(std_name: str, is_weapon: bool = False) -> List[str]:
 def alias_to_char_name(char_name: Optional[str]) -> Optional[str]:
     if not char_name:
         return None
+    if char_name in MASTER_CHAR_ALIAS_TO_NAME:
+        return MASTER_CHAR_ALIAS_TO_NAME[char_name]
     for i in char_alias_data:
         if (char_name in i) or (char_name in char_alias_data[i]):
             return i
@@ -130,6 +133,8 @@ def alias_to_char_name_list(char_name: str) -> List[str]:
 
 def char_name_to_char_id(char_name: Optional[str]) -> Optional[str]:
     char_name = alias_to_char_name(char_name)
+    if char_name in MASTER_CHAR_ID_BY_NAME:
+        return MASTER_CHAR_ID_BY_NAME[char_name]
     for _id, _name in id2name_data.items():
         if _name == char_name:
             return _id

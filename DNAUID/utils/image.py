@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import random
 from pathlib import Path
 
@@ -14,6 +13,7 @@ from gsuid_core.utils.image.image_tools import (
 )
 from gsuid_core.utils.download_resource.download_file import download
 
+from .master_char_const import get_master_char_panel_dir
 from .resource.RESOURCE_PATH import (
     MOD_PATH,
     ATTR_PATH,
@@ -218,42 +218,21 @@ async def get_paint_img(char_id: str | int, pic_url: str | None = None) -> Image
         return _normalize_paint_img(image.convert("RGBA"))
 
 
-def get_role_panel_img(char_id: str | int) -> Image.Image | None:
-    panel_dir = CUSTOM_PAINT_PATH / str(char_id)
-    if not panel_dir.exists():
+def get_role_panel_img(char_id: str | int) -> tuple[Path, Image.Image] | None:
+    panel_dir = CUSTOM_PAINT_PATH / get_master_char_panel_dir(char_id)
+    if not panel_dir.is_dir():
         return None
 
     image_extensions = Image.registered_extensions()
-    panel_paths = [path for path in panel_dir.iterdir() if path.is_file() and path.suffix.lower() in image_extensions]
+    panel_paths = sorted(
+        path for path in panel_dir.iterdir() if path.is_file() and path.suffix.lower() in image_extensions
+    )
     if not panel_paths:
         return None
 
-    with Image.open(random.choice(panel_paths)) as image:
-        return image.convert("RGBA")
-
-
-async def get_custom_paint_img(
-    char_id: str | int, pic_url: str | None = None, custom: bool = False
-) -> tuple[bool, Image.Image]:
-    """
-    获取char_id自定义立绘图片
-
-    Args:
-        char_id: 角色ID
-        pic_url: 图片URL
-        custom: 是否使用自定义立绘
-
-    Returns:
-        tuple[bool, Image.Image]: 是否使用自定义立绘, 立绘图片
-    """
-    if custom:
-        custom_dir = CUSTOM_PAINT_PATH / str(char_id)
-        if custom_dir.exists() and len(os.listdir(custom_dir)) > 0:
-            path = random.choice(os.listdir(custom_dir))
-            if path:
-                return True, Image.open(f"{custom_dir}/{path}").convert("RGBA")
-
-    return False, await get_paint_img(char_id, pic_url)
+    panel_path = random.choice(panel_paths)
+    with Image.open(panel_path) as image:
+        return panel_path, image.convert("RGBA")
 
 
 async def get_mod_img(mod_id: str | int, pic_url: str | None = None) -> Image.Image:
