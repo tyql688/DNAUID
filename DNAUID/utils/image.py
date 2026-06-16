@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import os
 import random
-from typing import Tuple, Union, Optional
 from pathlib import Path
 
 from PIL import Image, ImageOps, ImageDraw
@@ -61,19 +62,34 @@ COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_GRAY = (128, 128, 128)
 COLOR_LIGHT_GRAY = (230, 230, 230)
-COLOR_RED = (255, 0, 0)
 COLOR_GREEN = (76, 175, 80)
 COLOR_BLUE = (30, 40, 60)
 COLOR_PURPLE = (138, 43, 226)
 
 
-Color = Union[str, Tuple[int, int, int], Tuple[int, int, int, int]]
+Color = str | tuple[int, int, int] | tuple[int, int, int, int]
 
 grades = [Image.open(TEXT_PATH / f"number/{i}.png") for i in range(11)]
 
 
-def get_ICON():
+def get_ICON() -> Image.Image:
     return Image.open(ICON).convert("RGBA")
+
+
+def _normalize_paint_img(image: Image.Image) -> Image.Image:
+    paint_size = 1320
+    normalize_threshold = 1400
+
+    if image.width <= normalize_threshold and image.height <= normalize_threshold:
+        return image
+
+    side = min(image.width, image.height)
+    left = (image.width - side) // 2
+    top = (image.height - side) // 2
+    return image.crop((left, top, left + side, top + side)).resize(
+        (paint_size, paint_size),
+        Image.Resampling.LANCZOS,
+    )
 
 
 def get_dna_bg(w: int, h: int, bg: str = "bg") -> Image.Image:
@@ -84,8 +100,8 @@ def get_dna_bg(w: int, h: int, bg: str = "bg") -> Image.Image:
 async def download_pic_from_url(
     path: Path,
     pic_url: str,
-    size: Optional[Tuple[int, int]] = None,
-    name: Optional[str] = None,
+    size: tuple[int, int] | None = None,
+    name: str | None = None,
 ) -> Image.Image:
     path.mkdir(parents=True, exist_ok=True)
 
@@ -93,7 +109,7 @@ async def download_pic_from_url(
         name = pic_url.split("/")[-1]
     _path = path / name
     if not _path.exists():
-        await download(pic_url, path, name, tag="[DNA]")
+        _ = await download(pic_url, path, name, tag="[DNA]")
 
     img = Image.open(_path)
     if size:
@@ -102,7 +118,7 @@ async def download_pic_from_url(
     return img.convert("RGBA")
 
 
-async def get_skill_img(char_id: Union[str, int], skill_name: str, pic_url: Optional[str] = None) -> Image.Image:
+async def get_skill_img(char_id: str | int, skill_name: str, pic_url: str | None = None) -> Image.Image:
     char_skill_dir = SKILL_PATH / str(char_id)
     char_skill_dir.mkdir(parents=True, exist_ok=True)
 
@@ -111,14 +127,14 @@ async def get_skill_img(char_id: Union[str, int], skill_name: str, pic_url: Opti
     skill_path = char_skill_dir / name
     if not skill_path.exists():
         if pic_url:
-            await download(pic_url, char_skill_dir, name, tag="[DNA]")
+            _ = await download(pic_url, char_skill_dir, name, tag="[DNA]")
     if not skill_path.exists():
         return Image.new("RGBA", (128, 128))
 
     return Image.open(skill_path).convert("RGBA")
 
 
-async def get_avatar_img(char_id: Union[str, int], pic_url: Optional[str] = None) -> Image.Image:
+async def get_avatar_img(char_id: str | int, pic_url: str | None = None) -> Image.Image:
     char_avatar_dir = AVATAR_PATH
     char_avatar_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,14 +142,14 @@ async def get_avatar_img(char_id: Union[str, int], pic_url: Optional[str] = None
     avatar_path = char_avatar_dir / name
     if not avatar_path.exists():
         if pic_url:
-            await download(pic_url, char_avatar_dir, name, tag="[DNA]")
+            _ = await download(pic_url, char_avatar_dir, name, tag="[DNA]")
     if not avatar_path.exists():
         return Image.new("RGBA", (256, 256))
 
     return Image.open(avatar_path).convert("RGBA")
 
 
-async def get_weapon_img(weapon_id: Union[str, int], pic_url: Optional[str] = None) -> Image.Image:
+async def get_weapon_img(weapon_id: str | int, pic_url: str | None = None) -> Image.Image:
     weapon_dir = WEAPON_PATH
     weapon_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,14 +157,14 @@ async def get_weapon_img(weapon_id: Union[str, int], pic_url: Optional[str] = No
     weapon_path = weapon_dir / name
     if not weapon_path.exists():
         if pic_url:
-            await download(pic_url, weapon_dir, name, tag="[DNA]")
+            _ = await download(pic_url, weapon_dir, name, tag="[DNA]")
     if not weapon_path.exists():
         return Image.new("RGBA", (256, 256))
 
     return Image.open(weapon_path).resize((256, 256)).convert("RGBA")
 
 
-async def get_attr_img(attr_id: Optional[Union[str, int]] = None, pic_url: Optional[str] = None) -> Image.Image:
+async def get_attr_img(attr_id: str | int | None = None, pic_url: str | None = None) -> Image.Image:
     if attr_id is None:
         if pic_url:
             attr_id = pic_url.split("/")[-1].split(".")[0]
@@ -162,12 +178,12 @@ async def get_attr_img(attr_id: Optional[Union[str, int]] = None, pic_url: Optio
     attr_path = attr_dir / name
     if not attr_path.exists():
         if pic_url:
-            await download(pic_url, attr_dir, name, tag="[DNA]")
+            _ = await download(pic_url, attr_dir, name, tag="[DNA]")
 
     return Image.open(attr_path).convert("RGBA")
 
 
-async def get_weapon_attr_img(attr_id: Optional[Union[str, int]] = None, pic_url: Optional[str] = None) -> Image.Image:
+async def get_weapon_attr_img(attr_id: str | int | None = None, pic_url: str | None = None) -> Image.Image:
     if attr_id is None:
         if pic_url:
             attr_id = pic_url.split("/")[-1].split(".")[0]
@@ -181,12 +197,12 @@ async def get_weapon_attr_img(attr_id: Optional[Union[str, int]] = None, pic_url
     attr_path = attr_dir / name
     if not attr_path.exists():
         if pic_url:
-            await download(pic_url, attr_dir, name, tag="[DNA]")
+            _ = await download(pic_url, attr_dir, name, tag="[DNA]")
 
     return Image.open(attr_path).convert("RGBA")
 
 
-async def get_paint_img(char_id: Union[str, int], pic_url: Optional[str] = None) -> Image.Image:
+async def get_paint_img(char_id: str | int, pic_url: str | None = None) -> Image.Image:
     paint_dir = PAINT_PATH
     paint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -194,15 +210,16 @@ async def get_paint_img(char_id: Union[str, int], pic_url: Optional[str] = None)
     paint_path = paint_dir / name
     if not paint_path.exists():
         if pic_url:
-            await download(pic_url, paint_dir, name, tag="[DNA]")
+            _ = await download(pic_url, paint_dir, name, tag="[DNA]")
     if not paint_path.exists():
         return Image.new("RGBA", (1320, 1320))
 
-    return Image.open(paint_path).convert("RGBA")
+    with Image.open(paint_path) as image:
+        return _normalize_paint_img(image.convert("RGBA"))
 
 
 async def get_custom_paint_img(
-    char_id: Union[str, int], pic_url: Optional[str] = None, custom: bool = False
+    char_id: str | int, pic_url: str | None = None, custom: bool = False
 ) -> tuple[bool, Image.Image]:
     """
     获取char_id自定义立绘图片
@@ -225,7 +242,7 @@ async def get_custom_paint_img(
     return False, await get_paint_img(char_id, pic_url)
 
 
-async def get_mod_img(mod_id: Union[str, int], pic_url: Optional[str] = None) -> Image.Image:
+async def get_mod_img(mod_id: str | int, pic_url: str | None = None) -> Image.Image:
     mod_dir = MOD_PATH
     mod_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,7 +250,7 @@ async def get_mod_img(mod_id: Union[str, int], pic_url: Optional[str] = None) ->
     mod_path = mod_dir / name
     if not mod_path.exists():
         if pic_url:
-            await download(pic_url, mod_dir, name, tag="[DNA]")
+            _ = await download(pic_url, mod_dir, name, tag="[DNA]")
     if not mod_path.exists():
         return Image.new("RGBA", (256, 256))
 
@@ -250,11 +267,11 @@ async def get_avatar_title_img(
     ev: Event,
     uid: str,
     name: str,
-    user_level: Optional[int] = None,
-    other_info: Optional[list[tuple[str, str]]] = None,
-    avatar_user_id: Optional[str] = None,
+    user_level: int | None = None,
+    other_info: list[tuple[str, str]] | None = None,
+    avatar_user_id: str | None = None,
     uid_hidden: bool = False,
-):
+) -> Image.Image:
     from .fonts.dna_fonts import (
         dna_font_20,
         dna_font_24,
@@ -265,7 +282,7 @@ async def get_avatar_title_img(
 
     img = Image.open(TEXT_PATH / "avatar_title_bg.png").convert("RGBA")
     draw = ImageDraw.Draw(img)
-    draw.text(
+    _ = draw.text(
         (320, 100),
         f"{name}",
         COLOR_WHITE,
@@ -282,7 +299,7 @@ async def get_avatar_title_img(
             target=img,
         )
 
-        draw.text(
+        _ = draw.text(
             (330, 160),
             f"UID {uid}",
             COLOR_BLACK,
@@ -316,7 +333,7 @@ async def get_avatar_title_img(
     if user_level:
         avatar_title_level = Image.open(TEXT_PATH / "avatar_title_level.png").convert("RGBA")
         draw_avatar_title_level = ImageDraw.Draw(avatar_title_level)
-        draw_avatar_title_level.text(
+        _ = draw_avatar_title_level.text(
             (36, 35),
             f"{user_level}",
             COLOR_WHITE,
@@ -337,21 +354,21 @@ async def get_avatar_title_img(
         elif len(other_info) == 3:
             next_x = 150
             start_x = 100
-        elif len(other_info) == 2:
+        else:
             next_x = 200
             start_x = 150
 
         draw_avatar_title_base_info = ImageDraw.Draw(avatar_title_base_info)
         for index, value in enumerate(other_info):
             k, v = value
-            draw_avatar_title_base_info.text(
+            _ = draw_avatar_title_base_info.text(
                 (index * next_x + start_x, 23),
                 v,
                 COLOR_WHITE,
                 dna_font_40,
                 "mm",
             )
-            draw_avatar_title_base_info.text(
+            _ = draw_avatar_title_base_info.text(
                 (index * next_x + start_x, 63),
                 k,
                 COLOR_WHITE,
@@ -364,11 +381,11 @@ async def get_avatar_title_img(
     return img
 
 
-def get_footer():
+def get_footer() -> Image.Image:
     return Image.open(TEXT_PATH / "footer.png")
 
 
-def get_div():
+def get_div() -> Image.Image:
     return Image.open(TEXT_PATH / "div.png")
 
 
@@ -377,7 +394,7 @@ def add_footer(
     w: int = 0,
     offset_y: int = 0,
     is_invert: bool = False,
-):
+) -> Image.Image:
     footer = Image.open(TEXT_PATH / "footer.png")
     if is_invert:
         r, g, b, a = footer.split()
@@ -404,17 +421,17 @@ class SmoothDrawer:
     """通用抗锯齿绘制工具"""
 
     def __init__(self, scale: int = 4):
-        self.scale = scale
+        self.scale: int = scale
 
     def rounded_rectangle(
         self,
-        xy: Union[Tuple[int, int, int, int], Tuple[int, int]],
+        xy: tuple[int, ...],
         radius: int,
-        fill: Optional[Color] = None,
-        outline: Optional[Color] = None,
+        fill: Color | None = None,
+        outline: Color | None = None,
         width: int = 0,
-        target: Optional[Image.Image] = None,
-    ):
+        target: Image.Image | None = None,
+    ) -> None:
         if len(xy) == 4:
             # 边界框坐标 (x0, y0, x1, y1)
             x0, y0, x1, y1 = xy
@@ -449,8 +466,6 @@ class SmoothDrawer:
         if target is not None:
             target.alpha_composite(result, (paste_x, paste_y))
             return
-
-        return
 
 
 def get_smooth_drawer(scale: int = 4) -> SmoothDrawer:
@@ -489,9 +504,13 @@ def compress_to_webp(image_path: Path, quality: int = 80, delete_original: bool 
 
         compression_ratio = (1 - webp_size / orig_size) * 100 if orig_size > 0 else 0
         logger.info(
-            f"图片 {image_path.name} 压缩为webp格式 (质量: {quality}), "
-            f"压缩率: {compression_ratio:.2f}%, "
-            f"大小: {orig_size / 1024:.1f}KB -> {webp_size / 1024:.1f}KB"
+            " ".join(
+                [
+                    f"图片 {image_path.name} 压缩为webp格式 (质量: {quality}),",
+                    f"压缩率: {compression_ratio:.2f}%,",
+                    f"大小: {orig_size / 1024:.1f}KB -> {webp_size / 1024:.1f}KB",
+                ]
+            )
         )
 
         if delete_original:
