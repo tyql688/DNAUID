@@ -218,6 +218,20 @@ async def get_paint_img(char_id: str | int, pic_url: str | None = None) -> Image
         return _normalize_paint_img(image.convert("RGBA"))
 
 
+def get_role_panel_img(char_id: str | int) -> Image.Image | None:
+    panel_dir = CUSTOM_PAINT_PATH / str(char_id)
+    if not panel_dir.exists():
+        return None
+
+    image_extensions = Image.registered_extensions()
+    panel_paths = [path for path in panel_dir.iterdir() if path.is_file() and path.suffix.lower() in image_extensions]
+    if not panel_paths:
+        return None
+
+    with Image.open(random.choice(panel_paths)) as image:
+        return image.convert("RGBA")
+
+
 async def get_custom_paint_img(
     char_id: str | int, pic_url: str | None = None, custom: bool = False
 ) -> tuple[bool, Image.Image]:
@@ -472,10 +486,14 @@ def get_smooth_drawer(scale: int = 4) -> SmoothDrawer:
     return SmoothDrawer(scale=scale)
 
 
-def compress_to_webp(image_path: Path, quality: int = 80, delete_original: bool = True) -> tuple[bool, Path]:
-    try:
-        from PIL import Image
+def save_webp_img(image: Image.Image, path: Path, quality: int = 90, method: int = 4) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB"
+    image.convert(mode).save(path, "WEBP", quality=quality, method=method)
 
+
+def compress_to_webp(image_path: Path, quality: int = 90, delete_original: bool = True) -> tuple[bool, Path]:
+    try:
         if not image_path.exists():
             logger.warning(f"图片不存在: {image_path}")
             return False, image_path
@@ -485,16 +503,9 @@ def compress_to_webp(image_path: Path, quality: int = 80, delete_original: bool 
             return False, image_path
 
         webp_path = image_path.with_suffix(".webp")
-        img = Image.open(image_path)
         orig_size = image_path.stat().st_size
-
-        img.save(
-            webp_path,
-            "WEBP",
-            quality=quality,
-            method=6,
-            optimize=True,
-        )
+        with Image.open(image_path) as image:
+            save_webp_img(image, webp_path, quality=quality)
         webp_size = webp_path.stat().st_size
 
         if webp_size >= orig_size:

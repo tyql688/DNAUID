@@ -1,7 +1,7 @@
 from typing import Optional
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageOps, ImageDraw
 
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
@@ -24,6 +24,7 @@ from ..utils.image import (
     get_skill_img,
     get_weapon_img,
     get_smooth_drawer,
+    get_role_panel_img,
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
@@ -161,10 +162,30 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     total_h = 850 + div_img.height + global_skill_bg.height + con_weapon_h + div_img.height + avatar_title.height + 600
     card = get_dna_bg(1000, total_h, "bg2")
 
-    # paint
-    paint_img = await get_paint_img(char_id, role_detail.paint)
-    paint_img = paint_img.resize((int(1320 * 0.8), int(1320 * 0.8)))
-    card.alpha_composite(paint_img, (-280, -100))
+    role_panel_img = get_role_panel_img(char_id)
+    if role_panel_img is not None:
+        panel_size = (1000, 850)
+        portrait_size = (600, 850)
+        panel_fade = 72
+        panel_img = Image.new("RGBA", panel_size)
+        if role_panel_img.width >= role_panel_img.height:
+            panel_img.alpha_composite(ImageOps.fit(role_panel_img, panel_size, method=Image.Resampling.LANCZOS))
+        else:
+            portrait_img = ImageOps.fit(role_panel_img, portrait_size, method=Image.Resampling.LANCZOS)
+            panel_side_mask = Image.new("L", portrait_size, 255)
+            panel_side_fade = Image.linear_gradient("L").rotate(270, expand=True).resize((panel_fade, portrait_size[1]))
+            panel_side_mask.paste(panel_side_fade, (portrait_size[0] - panel_fade, 0))
+            panel_img.alpha_composite(Image.composite(portrait_img, Image.new("RGBA", portrait_size), panel_side_mask))
+
+        panel_mask = Image.new("L", panel_size, 255)
+        panel_bottom_fade = ImageOps.invert(Image.linear_gradient("L")).resize((panel_size[0], panel_fade))
+        panel_mask.paste(panel_bottom_fade, (0, panel_size[1] - panel_fade))
+        panel_img = Image.composite(panel_img, Image.new("RGBA", panel_size), panel_mask)
+        card.alpha_composite(panel_img, (0, 0))
+    else:
+        paint_img = await get_paint_img(char_id, role_detail.paint)
+        paint_img = paint_img.resize((int(1320 * 0.8), int(1320 * 0.8)))
+        card.alpha_composite(paint_img, (-280, -100))
 
     # 个人信息
     info_bg = Image.new("RGBA", (400, 200), (0, 0, 0, 0))

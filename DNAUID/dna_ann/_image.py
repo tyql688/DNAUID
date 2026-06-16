@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from PIL import Image, ImageOps, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from gsuid_core.utils.download_resource.download_file import download
 
@@ -49,10 +49,6 @@ def shrink_to_width(image: Image.Image, max_width: int) -> Image.Image:
         return image
     ratio = max_width / image.width
     return image.resize((int(max_width), int(image.height * ratio)), Image.Resampling.LANCZOS)
-
-
-def fit_image(image: Image.Image, size: Size) -> Image.Image:
-    return ImageOps.fit(image.convert("RGB"), size, method=Image.Resampling.LANCZOS)
 
 
 def rounded_mask(size: Size, radius: int) -> Image.Image:

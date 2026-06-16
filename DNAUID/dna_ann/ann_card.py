@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageOps, ImageDraw
 
 from gsuid_core.logger import logger
 from gsuid_core.utils.image.convert import convert_img
@@ -23,7 +23,6 @@ from ..utils import dna_api
 from ._image import (
     DETAIL_CACHE_PATH,
     PREVIEW_CACHE_PATH,
-    fit_image,
     wrap_text,
     cache_name,
     fetch_image,
@@ -76,7 +75,7 @@ async def _load_preview(url: str, width: int, height: int) -> Image.Image | None
         image = await fetch_image(PREVIEW_CACHE_PATH, url, name=cache_name("preview", url))
     except OSError:
         return None
-    return fit_image(image, (width, height))
+    return ImageOps.fit(image.convert("RGB"), (width, height), method=Image.Resampling.LANCZOS)
 
 
 async def _load_detail_image(url: str, max_width: int) -> Image.Image:
