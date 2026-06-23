@@ -312,6 +312,8 @@ async def get_avatar_title_img(
         ev.at = None  # 清空 at，确保获取发送者自己的头像
     try:
         avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
+    except Exception:
+        avatar = await get_avatar_img("5101")
     finally:
         ev.at = original_at  # 恢复原始值
 
