@@ -1,6 +1,6 @@
-import uuid
+from __future__ import annotations
+
 import asyncio
-from typing import Union, Optional
 from pathlib import Path
 
 import async_timeout
@@ -15,7 +15,7 @@ from gsuid_core.segment import MessageSegment
 from gsuid_core.web_app import app
 from gsuid_core.utils.cookie_manager.qrlogin import get_qrcode_base64
 
-from ..utils import TimedCache, dna_api, get_public_ip
+from ..utils import TimedCache, get_public_ip
 from .transport import TransportError, build_transport
 from .login_helps import (
     get_token,
@@ -126,8 +126,14 @@ async def send_login(bot: Bot, ev: Event, url: str):
 class LoginParams(BaseModel):
     auth: str
     user_id: str
-    mobile: Optional[Union[str, int]] = None
-    code: Optional[Union[str, int]] = None
+    mobile: str | None = None
+    code: str | None = None
+
+
+class LoginSubmitParams(BaseModel):
+    auth: str
+    mobile: str
+    code: str
 
 
 async def page_login_other(bot: Bot, ev: Event, url: str):
@@ -197,7 +203,7 @@ async def page_login_local(bot: Bot, ev: Event, url):
                     return await dna_login_timeout(bot, ev)
                 if not isinstance(result, LoginParams):
                     raise Exception("登录参数错误")
-                if result.mobile and result.code:
+                if result.mobile is not None and result.code is not None:
                     cache.delete(login_auth)
                     text = f"{result.mobile},{result.code}"
                     break
@@ -232,56 +238,38 @@ async def code_login(bot: Bot, ev: Event, text: str, isPage=False):
 
 @app.get("/dna/i/{auth}")
 async def dna_login_index(auth: str):
-    login_params: Optional[LoginParams] = cache.get(auth)
-    if not login_params or not isinstance(login_params, LoginParams):
+    login_params = cache.get(auth)
+    if not isinstance(login_params, LoginParams):
         template = DNA_TEMPLATES.get_template("404.html")
         return HTMLResponse(template.render())
-    else:
-        url = await get_dna_login_url()
-        template = DNA_TEMPLATES.get_template("index.html")
-        return HTMLResponse(
-            template.render(
-                server_url=url,
-                auth=auth,
-                userId=login_params.user_id,
-            )
+
+    url = await get_dna_login_url()
+    template = DNA_TEMPLATES.get_template("index.html")
+    return HTMLResponse(
+        template.render(
+            server_url=url,
+            auth=auth,
+            userId=login_params.user_id,
         )
+    )
 
 
 @app.post("/dna/login")
-async def dna_login(data: LoginParams):
-    if not cache.get(data.auth):
+async def dna_login(data: LoginSubmitParams):
+    login_params = cache.get(data.auth)
+    if not isinstance(login_params, LoginParams):
         return {"success": False, "msg": "登录超时"}
 
-    if data.mobile is None or data.code is None:
-        return {"success": False, "msg": "手机号或验证码不能为空"}
+    if not is_valid_chinese_phone_number(data.mobile) or not is_validate_code(data.code):
+        return {"success": False, "msg": "无效手机号或验证码"}
 
-    cache.set(data.auth, data)
+    cache.set(
+        data.auth,
+        login_params.model_copy(
+            update={
+                "mobile": data.mobile,
+                "code": data.code,
+            }
+        ),
+    )
     return {"success": True}
-
-
-class GetSmsCodeParams(BaseModel):
-    mobile: Union[str, int]
-    vJson: str
-
-
-@app.post("/dna/getSmsCode")
-async def dna_get_sms_code(data: GetSmsCodeParams):
-    """获取短信验证码接口"""
-    try:
-        if not is_valid_chinese_phone_number(str(data.mobile)):
-            return {"success": False, "msg": "无效的手机号"}
-
-        # 生成设备码
-        dev_code = str(uuid.uuid4()).upper()
-
-        # 调用 DNA API 获取验证码
-        result = await dna_api.get_sms_code(data.mobile, data.vJson, dev_code)
-
-        if result.is_success:
-            return {"success": True, "msg": "验证码已发送"}
-        else:
-            return {"success": False, "msg": result.throw_msg()}
-    except Exception as e:
-        logger.error("获取验证码失败", e)
-        return {"success": False, "msg": "获取验证码失败，请稍后重试"}

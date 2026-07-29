@@ -9,85 +9,109 @@
       href="https://herobox-img.yingxiong.com/h5/img/logo_1.png"
       type="image/x-icon"
     />
-    <script>
-      Object.defineProperty(navigator, 'userAgent', {
-        configurable: true,
-        get: () =>
-          'Mozilla/5.0 (Linux; Android 13; M2012K11AC) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36',
-      });
-    </script>
-    <script src="https://dnabbs.yingxiong.com/lib/ct4.js"></script>
-    <script
-      type="text/javascript"
-      charset="utf-8"
-      src="https://apps.bdimg.com/libs/jquery/1.6.4/jquery.min.js"
-    ></script>
     <style>
-      body,
-      html {
+      :root {
+        color-scheme: light;
+        --ink: #25334c;
+        --muted: #768196;
+        --primary: #4f7fe6;
+        --primary-strong: #3568d4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
         margin: 0;
-        padding: 0;
-        height: 100%;
-        font-family: 'Microsoft YaHei', sans-serif;
+        min-height: 100%;
       }
 
       body {
-        background-image: url('https://herobox-img.yingxiong.com/post/1748784746036602530.jpg');
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
+        position: relative;
+        isolation: isolate;
+        min-height: 100vh;
+        padding: 32px;
         display: flex;
         justify-content: center;
         align-items: center;
+        overflow-x: hidden;
+        color: var(--ink);
+        background: #dfe7f3;
+        font-family:
+          Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei',
+          sans-serif;
       }
 
       body::before {
         content: '';
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-image: inherit;
+        inset: -24px;
+        z-index: -2;
+        background-image: var(
+          --page-background,
+          url('https://herobox-img.yingxiong.com/post/1748784746036602530.jpg')
+        );
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
-        filter: blur(8px);
+        filter: blur(3px) saturate(0.94);
+      }
+
+      body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
         z-index: -1;
+        background:
+          radial-gradient(circle at 18% 10%, rgba(255, 255, 255, 0.4), transparent 34%),
+          linear-gradient(135deg, rgba(27, 45, 75, 0.38), rgba(227, 235, 247, 0.2));
       }
 
       .login-container {
-        background-color: rgba(255, 255, 255, 0.2);
-        padding: 2rem;
-        border-radius: 16px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        width: 320px;
-        transition: all 0.3s ease;
+        display: grid;
+        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+        width: 900px;
+        max-width: 100%;
+        min-height: 540px;
+        overflow: hidden;
+        background: rgba(241, 246, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.58);
+        border-radius: 28px;
+        box-shadow:
+          0 28px 80px rgba(27, 41, 68, 0.26),
+          0 2px 12px rgba(27, 41, 68, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.42);
+        backdrop-filter: blur(22px) saturate(1.15);
+        -webkit-backdrop-filter: blur(22px) saturate(1.15);
       }
 
-      .login-container:hover {
-        /* transform: translateY(-5px); */
-        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.45);
+      .intro-panel {
+        display: flex;
+        min-width: 0;
+        padding: 40px;
+        flex-direction: column;
+        color: #fff;
+        background:
+          radial-gradient(circle at 95% 0, rgba(124, 167, 255, 0.32), transparent 34%),
+          linear-gradient(155deg, rgba(24, 42, 72, 0.68), rgba(45, 76, 125, 0.52));
       }
 
       .login-header {
         display: flex;
         align-items: center;
-        margin-bottom: 2rem;
-        justify-content: space-between;
+        gap: 18px;
       }
 
       .banner {
-        width: 80px;
-        height: 80px;
+        width: 72px;
+        height: 72px;
+        flex: 0 0 auto;
         border-radius: 50%;
         overflow: hidden;
-        border: 3px solid rgba(255, 255, 255, 0.5);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        margin-right: 0.5rem;
+        border: 3px solid rgba(255, 255, 255, 0.64);
+        box-shadow: 0 10px 26px rgba(10, 24, 50, 0.28);
       }
 
       .banner img {
@@ -97,115 +121,245 @@
       }
 
       .banner-text {
-        flex: 1;
-        padding-right: 1rem;
-        margin-left: 0.5rem;
-      }
-
-      .welcome-text {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #fff;
-        margin-bottom: 0.25rem;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        min-width: 0;
       }
 
       .logo-text {
-        font-size: 0.9rem;
+        display: inline-flex;
+        padding: 4px 9px;
+        margin-bottom: 8px;
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        font-size: 0.72rem;
         font-weight: 700;
-        color: #fff;
-        margin-bottom: 0.25rem;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        letter-spacing: 0.09em;
+      }
+
+      .welcome-text {
+        margin-bottom: 5px;
+        font-size: 1.55rem;
+        font-weight: 700;
+        line-height: 1.25;
+        letter-spacing: -0.02em;
       }
 
       .dnabbs-text {
-        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 0.86rem;
+        line-height: 1.5;
+      }
+
+      .verification-guide {
+        padding-top: 32px;
+        margin-top: auto;
+      }
+
+      .guide-kicker {
+        margin-bottom: 7px;
+        color: #aecaff;
+        font-size: 0.72rem;
         font-weight: 700;
-        color: #e6e6e6;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        letter-spacing: 0.12em;
+      }
+
+      .guide-title {
+        font-size: 1.18rem;
+        font-weight: 700;
+      }
+
+      .guide-steps {
+        padding-left: 1.15rem;
+        margin: 12px 0 18px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 0.84rem;
+        line-height: 1.75;
+      }
+
+      .guide-steps li::marker {
+        color: #aecaff;
+        font-weight: 700;
+      }
+
+      .app-links {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .app-link {
+        display: flex;
+        min-width: 0;
+        padding: 12px 13px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.11);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        text-decoration: none;
+        transition:
+          transform 0.2s ease,
+          background-color 0.2s ease,
+          border-color 0.2s ease;
+      }
+
+      .app-link:hover,
+      .app-link:focus-visible {
+        background: rgba(255, 255, 255, 0.18);
+        border-color: rgba(255, 255, 255, 0.34);
+        outline: none;
+        transform: translateY(-2px);
+      }
+
+      .platform-name {
+        overflow: hidden;
+        font-weight: 700;
+        text-overflow: ellipsis;
+      }
+
+      .app-action {
+        flex: 0 0 auto;
+        color: rgba(255, 255, 255, 0.64);
+        font-size: 0.72rem;
+      }
+
+      .download-links {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 5px;
+        margin-top: 12px;
+        color: rgba(255, 255, 255, 0.48);
+        font-size: 0.74rem;
+      }
+
+      .download-links a {
+        color: rgba(255, 255, 255, 0.74);
+        text-underline-offset: 3px;
+      }
+
+      .download-links a:hover,
+      .download-links a:focus-visible {
+        color: #fff;
+      }
+
+      .form-panel {
+        display: flex;
+        min-width: 0;
+        padding: 42px 46px;
+        flex-direction: column;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.48);
+        border-left: 1px solid rgba(255, 255, 255, 0.34);
+      }
+
+      .form-heading {
+        margin-bottom: 30px;
+      }
+
+      .form-eyebrow {
+        color: var(--primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+      }
+
+      .form-heading h1 {
+        margin: 9px 0 8px;
+        color: var(--ink);
+        font-size: 1.75rem;
+        line-height: 1.25;
+        letter-spacing: -0.03em;
+      }
+
+      .form-heading p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.65;
       }
 
       .input-group {
-        margin-bottom: 1.5rem;
+        margin-bottom: 20px;
       }
 
       label {
         display: block;
-        margin-bottom: 0.5rem;
-        color: #fff;
-        font-weight: 500;
+        margin-bottom: 8px;
+        color: #44516a;
+        font-size: 0.86rem;
+        font-weight: 650;
       }
 
       input[type='tel'],
       input[type='text'] {
         width: 100%;
-        padding: 0.75rem;
-        border: none;
-        border-radius: 8px;
-        box-sizing: border-box;
+        min-height: 48px;
+        padding: 12px 14px;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.56);
+        border: 1px solid rgba(255, 255, 255, 0.68);
+        border-radius: 12px;
+        outline: none;
         font-size: 16px;
-        background-color: rgba(255, 255, 255, 0.9);
-        transition: all 0.3s ease;
+        transition:
+          background-color 0.2s ease,
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+
+      input[type='tel']::placeholder,
+      input[type='text']::placeholder {
+        color: #a0a9b8;
       }
 
       input[type='tel']:focus,
       input[type='text']:focus {
-        outline: none;
-        box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.6);
+        background: rgba(255, 255, 255, 0.78);
+        border-color: rgba(79, 127, 230, 0.72);
+        box-shadow: 0 0 0 4px rgba(79, 127, 230, 0.11);
       }
 
-      .verification-group {
-        display: flex;
-        gap: 0.5rem;
-      }
-
-      .verification-group input {
-        flex-grow: 1;
+      .user-id-display {
+        margin: 2px 0 14px;
+        color: #9aa4b4;
+        font-size: 0.72rem;
+        text-align: right;
       }
 
       button {
         width: 100%;
-        padding: 0.75rem;
-        background-color: #4a90e2;
-        color: white;
-        border: none;
-        border-radius: 8px;
+        min-height: 48px;
+        padding: 12px 16px;
+        color: #fff;
+        background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+        border: 0;
+        border-radius: 12px;
+        box-shadow: 0 10px 24px rgba(53, 104, 212, 0.24);
         cursor: pointer;
-        transition: all 0.3s ease;
-        font-size: 16px;
-        font-weight: 600;
+        font-size: 1rem;
+        font-weight: 700;
+        transition:
+          transform 0.2s ease,
+          box-shadow 0.2s ease,
+          opacity 0.2s ease;
       }
 
-      button:hover {
-        background-color: #357abd;
-        /* transform: translateY(-2px); */
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      button:hover:not(:disabled),
+      button:focus-visible:not(:disabled) {
+        box-shadow: 0 13px 30px rgba(53, 104, 212, 0.32);
+        outline: none;
+        transform: translateY(-1px);
       }
 
       button:disabled {
-        background-color: #ccc;
-        cursor: not-allowed;
-        transform: none;
+        background: #d7dce5;
         box-shadow: none;
-      }
-
-      #getCodeBtn {
-        width: auto;
-        white-space: nowrap;
-        padding: 0.75rem 1rem;
-        display: inline-block;
-      }
-
-      .user-id-display {
-        text-align: right;
-        color: rgba(255, 255, 255, 0.6);
-        font-size: 0.8em;
-        margin-bottom: 10px;
-        transition: opacity 0.3s ease;
-      }
-
-      .user-id-display:hover {
-        opacity: 1;
+        cursor: not-allowed;
+        opacity: 0.86;
       }
 
       .toast-container {
@@ -219,11 +373,13 @@
       }
 
       .toast {
-        padding: 1rem 1.5rem;
+        padding: 14px 18px;
         margin-bottom: 10px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        color: white;
+        color: #fff;
+        background: rgba(37, 51, 76, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(25, 36, 57, 0.2);
         font-weight: 500;
         text-align: center;
         transform: translateY(-100px);
@@ -242,77 +398,194 @@
       }
 
       .toast.success {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4f7fe6, #6f67d9);
       }
 
       .toast.error {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        background: linear-gradient(135deg, #dc5d70, #c8445c);
       }
 
       .toast.warning {
-        background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
-        color: #333;
+        color: #553b12;
+        background: linear-gradient(135deg, #ffe6b4, #f4c96e);
       }
 
       .toast.info {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        background: linear-gradient(135deg, #438bd9, #4dadd7);
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 18px 12px;
+          align-items: flex-start;
+        }
+
+        .login-container {
+          grid-template-columns: 1fr;
+          width: 390px;
+          min-height: 0;
+          border-radius: 22px;
+        }
+
+        .intro-panel {
+          padding: 25px 24px 24px;
+        }
+
+        .banner {
+          width: 62px;
+          height: 62px;
+        }
+
+        .welcome-text {
+          font-size: 1.35rem;
+        }
+
+        .verification-guide {
+          padding-top: 24px;
+        }
+
+        .guide-steps {
+          margin-bottom: 14px;
+          line-height: 1.65;
+        }
+
+        .form-panel {
+          padding: 28px 24px 30px;
+          border-top: 1px solid rgba(255, 255, 255, 0.34);
+          border-left: 0;
+        }
+
+        .form-heading {
+          margin-bottom: 24px;
+        }
+
+        .form-heading h1 {
+          font-size: 1.5rem;
+        }
+      }
+
+      @media (max-width: 350px) {
+        .app-links {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
       }
     </style>
   </head>
   <body>
     <div class="toast-container" id="toastContainer"></div>
 
-    <div class="login-container">
-      <div class="login-header">
-        <div class="banner-text">
-          <div class="welcome-text">欢迎登录</div>
-          <div class="logo-text">DNAUID</div>
-          <div class="dnabbs-text">皎皎角</div>
+    <main class="login-container">
+      <section class="intro-panel">
+        <div class="login-header">
+          <div class="banner">
+            <img
+              src="https://herobox-img.yingxiong.com/role/config/character/icon/Head_Songlu.png"
+              alt="松露角色头像"
+            />
+          </div>
+          <div class="banner-text">
+            <div class="logo-text">DNAUID</div>
+            <div class="welcome-text">登录皎皎角账号</div>
+            <div class="dnabbs-text">验证码需要在官方 App 中获取</div>
+          </div>
         </div>
-        <div class="banner">
-          <img
-            src="https://herobox-img.yingxiong.com/role/config/character/icon/Head_Songlu.png"
-            alt="Banner"
-          />
+        <div class="verification-guide">
+          <div class="guide-kicker">验证码获取</div>
+          <div class="guide-title">请在皎皎角获取验证码</div>
+          <ol class="guide-steps">
+            <li>点击对应系统的打开按钮</li>
+            <li>在皎皎角登录页获取验证码</li>
+            <li>返回本页完成登录</li>
+          </ol>
+          <div class="app-links">
+            <a
+              class="app-link"
+              id="androidOpenAppLink"
+              href="jjjiaoherobox://jjjiaoherobox"
+              aria-label="打开 Android 皎皎角 App"
+            >
+              <span class="platform-name">Android</span>
+              <span class="app-action">打开 →</span>
+            </a>
+            <a
+              class="app-link"
+              id="iosOpenAppLink"
+              href="https://dnabbs.yingxiong.com/openbox/"
+              aria-label="打开 iOS 皎皎角 App"
+            >
+              <span class="platform-name">iOS</span>
+              <span class="app-action">打开 →</span>
+            </a>
+          </div>
+          <div class="download-links">
+            <span>未安装 App？</span>
+            <a
+              id="officialDownloadLink"
+              href="https://dna.yingxiong.com/p/hzDown.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              >前往官方下载</a
+            >
+          </div>
         </div>
-      </div>
-      <form id="loginForm">
-        <div class="input-group">
-          <label for="phone">手机号</label>
-          <input
-            type="tel"
-            id="phone"
-            name="phone"
-            required
-            pattern="[0-9]{11}"
-            placeholder="请输入11位手机号"
-          />
+      </section>
+
+      <section class="form-panel">
+        <div class="form-heading">
+          <div class="form-eyebrow">手机验证码登录</div>
+          <h1>绑定 DNAUID</h1>
+          <p>填写与皎皎角一致的手机号，以及 App 收到的四位验证码。</p>
         </div>
-        <div class="input-group">
-          <label for="verificationCode">验证码</label>
-          <div class="verification-group">
+        <form id="loginForm">
+          <div class="input-group">
+            <label for="phone">手机号</label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              required
+              pattern="[0-9]{11}"
+              placeholder="请输入 11 位手机号"
+              autocomplete="tel"
+              inputmode="numeric"
+            />
+          </div>
+          <div class="input-group">
+            <label for="verificationCode">验证码</label>
             <input
               type="text"
               id="verificationCode"
               name="verificationCode"
               required
-              placeholder="请输入验证码"
+              pattern="[0-9]{4}"
+              maxlength="4"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              placeholder="请输入四位验证码"
             />
-            <button type="button" id="getCodeBtn" disabled>获取验证码</button>
           </div>
-        </div>
-        <div id="userIdDisplay" class="user-id-display">当前识别码: {{ userId }}</div>
-        <button type="submit" id="loginBtn">登录</button>
-      </form>
-    </div>
+          <div id="userIdDisplay" class="user-id-display">当前识别码: {{ userId }}</div>
+          <button type="submit" id="loginBtn" disabled>登录</button>
+        </form>
+      </section>
+    </main>
 
     <script>
       const phoneInput = document.getElementById('phone')
       const verificationCodeInput = document.getElementById('verificationCode')
-      const getCodeBtn = document.getElementById('getCodeBtn')
       const loginBtn = document.getElementById('loginBtn')
       const loginForm = document.getElementById('loginForm')
       const toastContainer = document.getElementById('toastContainer')
+      let isSubmitting = false
 
       // 通用 Toast 提示函数
       function showToast(message, type = 'info', duration = 3000) {
@@ -336,116 +609,66 @@
         }, duration)
       }
 
-      phoneInput.addEventListener('input', function () {
-        getCodeBtn.disabled = this.value.length !== 11
-        loginBtn.disabled = this.value.length !== 11 || verificationCodeInput.value === ''
-      })
+      function updateLoginButton() {
+        const isPhoneValid = /^1[3-9]\d{9}$/.test(phoneInput.value)
+        const isCodeValid = /^\d{4}$/.test(verificationCodeInput.value)
+        loginBtn.disabled = isSubmitting || !isPhoneValid || !isCodeValid
+      }
 
-      verificationCodeInput.addEventListener('input', function () {
-        loginBtn.disabled = this.value === '' || phoneInput.value.length !== 11
-      })
+      phoneInput.addEventListener('input', updateLoginButton)
+      verificationCodeInput.addEventListener('input', updateLoginButton)
 
-      // const captchaId = 'a9d7b33f6daf81efea5e3dcea8d92bd7' // ios
-      const captchaId = '114d4e96cc4536050c7efaeb7e4f3c8c' // android
-      const product = 'bind'
+      loginForm.addEventListener('submit', async function (e) {
+        e.preventDefault()
+        if (loginBtn.disabled) {
+          return
+        }
 
-      window.initAlicom4(
-        {
-          captchaId: captchaId,
-          https: true,
-          product: product,
-        },
-        function (captcha) {
-          captcha
-            .onReady(function () {})
-            .onNextReady(function () {})
-            .onSuccess(function () {
-              var result = captcha.getValidate()
-              if (!result) {
-                return showToast('请完成验证', 'warning')
-              }
-              result.captcha_id = captchaId
+        isSubmitting = true
+        loginBtn.textContent = '登录中...'
+        updateLoginButton()
 
-              const data = {
-                mobile: phoneInput.value,
-                vJson: JSON.stringify(result),
-              }
-
-              $.ajax({
-                url: '{{ server_url }}/dna/getSmsCode',
-                type: 'POST',
-                data: JSON.stringify(data),
-                contentType: 'application/json',
-                success: (res) => {
-                  if (res.success) {
-                    showToast('验证码已发送', 'success')
-                  } else {
-                    showToast('验证码发送失败' + (res.msg ? ': ' + res.msg : '，请重试'), 'error')
-                  }
-                },
-                error: () => showToast('请求出错，请检查网络连接', 'error'),
-              })
-            })
-            .onFail(function (fail) {
-              console.log(fail)
-            })
-            .onError(function (error) {
-              console.log(error)
-            })
-
-          getCodeBtn.onclick = function () {
-            this.disabled = true
-            let countdown = 60
-            const originalText = this.textContent
-
-            captcha.showCaptcha()
-
-            const timer = setInterval(() => {
-              this.textContent = `${countdown}秒后重试`
-              countdown--
-              if (countdown < 0) {
-                clearInterval(timer)
-                this.textContent = originalText
-                this.disabled = false
-                captcha.destroy()
-              }
-            }, 1000)
-          }
-        },
-      )
-
-      loginForm.addEventListener('submit', function (e) {
         const data = {
           mobile: phoneInput.value,
           code: verificationCodeInput.value,
           auth: '{{ auth }}',
-          user_id: '{{ userId }}',
         }
-        e.preventDefault()
-        $.ajax({
-          url: '{{ server_url }}/dna/login',
-          type: 'POST',
-          data: JSON.stringify(data),
-          contentType: 'application/json',
-          success: (res) => {
-            if (res.success) {
-              showToast('正在尝试登录...正在跳转...', 'success', 2000)
-              setTimeout(() => {
-                window.location.href = 'https://github.com/tyql688/DNAUID'
-              }, 2000)
-            } else {
-              showToast('登录失败' + (res.msg ? ': ' + res.msg : '，请重试'), 'error')
-            }
-          },
-          error: () => showToast('登录失败，请重试', 'error'),
-        })
+
+        try {
+          const response = await fetch('{{ server_url }}/dna/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+          })
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+          }
+
+          const result = await response.json()
+          if (result.success) {
+            showToast('正在尝试登录...正在跳转...', 'success', 2000)
+            setTimeout(() => {
+              window.location.href = 'https://github.com/tyql688/DNAUID'
+            }, 2000)
+            return
+          }
+
+          showToast('登录失败' + (result.msg ? ': ' + result.msg : '，请重试'), 'error')
+        } catch {
+          showToast('登录失败，请重试', 'error')
+        }
+
+        isSubmitting = false
+        loginBtn.textContent = '登录'
+        updateLoginButton()
       })
 
       function loadBackgroundImage() {
         const img = new Image()
         img.onload = function () {
-          document.body.style.backgroundImage = `url(${img.src})`
-          document.body.classList.add('bg-loaded')
+          document.body.style.setProperty('--page-background', `url("${img.src}")`)
         }
         img.src = 'https://herobox-img.yingxiong.com/post/1748784746036602530.jpg'
       }
