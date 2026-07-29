@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from pathlib import Path
 
 from PIL import Image, ImageOps, ImageDraw
@@ -9,6 +10,12 @@ from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
 from ..utils import dna_api
+from .loadout import (
+    WeaponNotFoundError,
+    WeaponNotUnlockedError,
+    WeaponSlotConflictError,
+    resolve_weapon_loadout,
+)
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_SALMON,
@@ -23,12 +30,14 @@ from ..utils.image import (
     get_grade_img,
     get_paint_img,
     get_skill_img,
-    get_weapon_img,
     get_smooth_drawer,
     get_role_panel_img,
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from .damage_service import RoleDamageBuild, calculate_role_damage
+from .damage_renderer import draw_role_damage_section
+from .weapon_renderer import draw_weapon_detail_section
 from ..utils.api.model import (
     WeaponDetail,
     RoleInsForTool,
@@ -39,13 +48,14 @@ from ..utils.api.model import (
 from ..utils.msgs.notify import (
     dna_not_found,
     dna_uid_invalid,
+    send_dna_notify,
     dna_not_unlocked,
     dna_peek_blocked,
     dna_token_invalid,
 )
 from ..utils.name_convert import alias_to_char_name, char_name_to_char_id
 from ..utils.original_image import cache_original_image
-from ..utils.database.models import DNABind
+from ..utils.database.models import DNABind, DNAUser
 from ..utils.fonts.dna_fonts import (
     dna_font_18,
     dna_font_24,
@@ -75,17 +85,33 @@ attr_list = [
     ("enmityValue", "背水", "icon2.png"),
 ]
 
-weapon_attr_list = [
-    ("type", "武器类型", "icon16.png"),
-    ("atk", "攻击", "icon17.png"),
-    ("crd", "暴击率", "icon13.png"),
-    ("cri", "暴击伤害", "icon12.png"),
-    ("speed", "攻击速度", "icon14.png"),
-    ("trigger", "触发率", "icon15.png"),
-]
+
+async def _load_weapon_detail(
+    dna_user: DNAUser,
+    weapon_id: int,
+    weapon_eid: str,
+) -> WeaponDetail | None:
+    response = await dna_api.get_weapon_detail(
+        dna_user,
+        weapon_id,
+        weapon_eid,
+    )
+    if not response.is_success:
+        return None
+    if response.data is None:
+        raise RuntimeError(
+            f"武器详情成功响应缺少 data: weapon_id={weapon_id}",
+        )
+    return DNAWeaponDetailRes.model_validate(response.data).weaponDetail
 
 
-async def draw_role_card(bot: Bot, ev: Event, char_name: str):
+async def draw_role_card(
+    bot: Bot,
+    ev: Event,
+    char_name: str,
+    *,
+    weapon_names: tuple[str, ...] = (),
+) -> None:
     user_id = await get_using_id(ev)
     if is_peek_blocked(ev, user_id):
         await dna_peek_blocked(bot, ev)
@@ -111,7 +137,7 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
         return
     char_name = real_char_name
 
-    default_role = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    default_role = await dna_api.get_default_role_for_tool(dna_user)
     if not default_role.is_success:
         await dna_not_found(bot, ev, "角色列表信息")
         return
@@ -119,8 +145,36 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     default_role = DNARoleForToolRes.model_validate(default_role.data)
     role_show = default_role.roleInfo.roleShow
 
+    try:
+        weapon_loadout = resolve_weapon_loadout(
+            role_show.closeWeapons,
+            role_show.langRangeWeapons,
+            weapon_names,
+        )
+    except WeaponNotFoundError as error:
+        await dna_not_found(
+            bot,
+            ev,
+            f"展柜武器【{error.weapon_name}】",
+        )
+        return
+    except WeaponNotUnlockedError as error:
+        await dna_not_unlocked(
+            bot,
+            ev,
+            f"当前展柜武器【{error.weapon_name}】",
+        )
+        return
+    except WeaponSlotConflictError as error:
+        await send_dna_notify(
+            bot,
+            ev,
+            f"不能同时携带两把{error.slot.value}武器",
+        )
+        return
+
     if is_master_char_id(char_id):
-        role_char_simple: Optional[RoleInsForTool] = next(
+        role_char_simple: RoleInsForTool | None = next(
             (i for i in role_show.roleChars if is_master_char_id(i.charId)), None
         )
         if role_char_simple is not None:
@@ -136,7 +190,11 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
         await dna_not_unlocked(bot, ev, f"当前展柜角色【{char_name}】")
         return
 
-    role_detail = await dna_api.get_role_detail(dna_user.cookie, char_id, role_char_simple.charEid, dna_user.dev_code)
+    role_detail = await dna_api.get_role_detail(
+        dna_user,
+        char_id,
+        role_char_simple.charEid,
+    )
     if not role_detail.is_success:
         await dna_not_found(bot, ev, f"角色【{char_name}】详情")
         return
@@ -144,14 +202,75 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
     role_detail = DNARoleDetailRes.model_validate(role_detail.data)
     role_detail = role_detail.charDetail
 
-    con_weapon_detail: Optional[WeaponDetail] = None
-    if role_detail.conWeaponId and role_detail.conWeaponEid:
-        con_weapon = await dna_api.get_weapon_detail(
-            dna_user.cookie, role_detail.conWeaponId, role_detail.conWeaponEid, dna_user.dev_code
+    con_weapon_detail: WeaponDetail | None = None
+    if role_detail.conWeaponId is not None and role_detail.conWeaponEid is not None:
+        con_weapon_detail = await _load_weapon_detail(
+            dna_user,
+            role_detail.conWeaponId,
+            role_detail.conWeaponEid,
         )
-        if con_weapon.is_success:
-            con_weapon = DNAWeaponDetailRes.model_validate(con_weapon.data)
-            con_weapon_detail = con_weapon.weaponDetail
+
+    close_weapon_detail: WeaponDetail | None = None
+    if weapon_loadout.close_weapon is not None:
+        close_weapon_detail = await _load_weapon_detail(
+            dna_user,
+            weapon_loadout.close_weapon.weapon_id,
+            weapon_loadout.close_weapon.weapon_eid,
+        )
+        if close_weapon_detail is None:
+            await dna_not_found(
+                bot,
+                ev,
+                f"近战武器【{weapon_loadout.close_weapon.name}】详情",
+            )
+            return
+
+    ranged_weapon_detail: WeaponDetail | None = None
+    if weapon_loadout.ranged_weapon is not None:
+        ranged_weapon_detail = await _load_weapon_detail(
+            dna_user,
+            weapon_loadout.ranged_weapon.weapon_id,
+            weapon_loadout.ranged_weapon.weapon_eid,
+        )
+        if ranged_weapon_detail is None:
+            await dna_not_found(
+                bot,
+                ev,
+                f"远程武器【{weapon_loadout.ranged_weapon.name}】详情",
+            )
+            return
+
+    damage_build = RoleDamageBuild(
+        role_detail=role_detail,
+        con_weapon_detail=con_weapon_detail,
+        close_weapon_detail=close_weapon_detail,
+        lang_range_weapon_detail=ranged_weapon_detail,
+    )
+    damage_result = await calculate_role_damage(dna_user, damage_build)
+    damage_section = draw_role_damage_section(damage_build, damage_result)
+    weapon_sections: list[Image.Image] = []
+    if con_weapon_detail is not None:
+        weapon_sections.append(
+            await draw_weapon_detail_section(
+                con_weapon_detail,
+                "同律武器",
+            )
+        )
+
+    if close_weapon_detail is not None:
+        weapon_sections.append(
+            await draw_weapon_detail_section(
+                close_weapon_detail,
+                "近战武器",
+            )
+        )
+    if ranged_weapon_detail is not None:
+        weapon_sections.append(
+            await draw_weapon_detail_section(
+                ranged_weapon_detail,
+                "远程武器",
+            )
+        )
 
     # 提前获取头像与分割线，用于计算总高度
     div_img = get_div()
@@ -167,8 +286,18 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
         uid_hidden=uid_hidden,
     )
     avatar_title = avatar_title.resize((1000, 1000 * avatar_title.height // avatar_title.width))
-    con_weapon_h = 450 if con_weapon_detail else 0
-    total_h = 850 + div_img.height + global_skill_bg.height + con_weapon_h + div_img.height + avatar_title.height + 600
+    weapon_sections_height = sum(section.height for section in weapon_sections)
+    total_h = (
+        850
+        + div_img.height
+        + global_skill_bg.height
+        + weapon_sections_height
+        + div_img.height
+        + damage_section.height
+        + 40
+        + avatar_title.height
+        + 600
+    )
     card = get_dna_bg(1000, total_h, "bg2")
 
     original_img_path: Path | None = None
@@ -305,103 +434,9 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
         card.alpha_composite(skill_bg, (50 + index * 300, h_index))
     h_index += global_skill_bg.height
 
-    if con_weapon_detail:
-        con_weapon_mod_bg = Image.new("RGBA", (1000, 500), (0, 0, 0, 0))
-        con_weapon_mod_bg_draw = ImageDraw.Draw(con_weapon_mod_bg)
-        # 横向排列4个mod 俩左 俩右
-        sortmods = [
-            con_weapon_detail.modes[0],
-            con_weapon_detail.modes[2],
-            con_weapon_detail.modes[3],
-            con_weapon_detail.modes[1],
-        ]
-        for index, mod in enumerate(sortmods):
-            quality = mod.quality or 1
-            left = True if index <= 1 else False
-            mod_bg = Image.open(TEXT_PATH / f"mod/mod_{'left' if left else 'right'}_{quality}.png")
-            mod_bg_draw = ImageDraw.Draw(mod_bg)
-
-            if mod.id != -1 and mod.name:
-                mod_img = await get_mod_img(mod.id, mod.icon)
-                mod_img = mod_img.resize((180, 180))
-                mod_bg.alpha_composite(mod_img, (35, 15))
-                # 名字
-                size = (115, 180) if left else (140, 180)
-                mod_bg_draw.text(size, mod.name, COLOR_WHITE, dna_font_26, "mm")
-
-            if mod.id != -1 and mod.level:
-                size = (54, 30, 106, 60) if left else (134, 30, 186, 60)
-                get_smooth_drawer().rounded_rectangle(
-                    size,
-                    10,
-                    COLOR_ORANGE_RED,
-                    target=mod_bg,
-                )
-                size = (80, 44) if left else (160, 44)
-                mod_bg_draw.text(size, f"+{mod.level}", COLOR_WHITE, dna_font_26, "mm")
-                # mod_bg_draw.text(size, f"+{10}", COLOR_WHITE, dna_font_26, "mm")
-
-            # 横向排列4个mod
-            con_weapon_mod_bg.alpha_composite(mod_bg, (40 + index * 220, 0))
-
-        # 武器背景
-        weapon_bg = Image.open(TEXT_PATH / "weapon_bg.png")
-        # 贴武器
-        weapon_img = await get_weapon_img(con_weapon_detail.id, con_weapon_detail.icon)
-        weapon_img = weapon_img.resize((180, 180))
-        weapon_bg.alpha_composite(weapon_img, (-10, -10))
-
-        # 贴武器等级
-        ellipse = Image.new("RGBA", (80, 35))
-        ellipse_draw = ImageDraw.Draw(ellipse)
-        get_smooth_drawer().rounded_rectangle((0, 0, 80, 35), fill=COLOR_FIRE_BRICK, radius=7, target=ellipse)
-        ellipse_draw.text((40, 17), f"Lv.{con_weapon_detail.level}", COLOR_WHITE, dna_font_26, "mm")
-        weapon_bg.alpha_composite(ellipse, (150, 100))
-
-        weapon_bg = weapon_bg.resize((int(weapon_bg.width * 0.8), int(weapon_bg.height * 0.8)))
-
-        con_weapon_mod_bg.alpha_composite(weapon_bg, (70, 250))
-        # 贴武器名字
-        con_weapon_mod_bg_draw.text((70, 385), con_weapon_detail.name, COLOR_WHITE, dna_font_26, "lm")
-        # 武器属性
-        weapon_attr = Image.open(TEXT_PATH / "weapon_attr.png")
-        weapon_attr_draw = ImageDraw.Draw(weapon_attr)
-
-        # 先左再右，先上再下，3行2列
-        for index, attrs in enumerate(weapon_attr_list):
-            if index == 0:
-                attr_value = f"{con_weapon_detail.elementName}"
-            else:
-                value = getattr(con_weapon_detail.attribute, attrs[0])
-                if isinstance(value, float):
-                    value = f"{value:.0%}"
-                else:
-                    value = f"{value}"
-                attr_value = value
-
-            icon = Image.open(TEXT_PATH / f"icons/{attrs[2]}")
-            # icon
-            weapon_attr.alpha_composite(icon, (index % 2 * 320, index // 2 * 53))
-            # 属性名
-            weapon_attr_draw.text(
-                (53 + (index % 2) * 320, 25 + (index // 2) * 53),
-                attrs[1],
-                COLOR_WHITE,
-                font=dna_font_26,
-                anchor="lm",
-            )
-            # 属性值
-            weapon_attr_draw.text(
-                (310 + (index % 2) * 318, 25 + (index // 2) * 53),
-                (attr_value if "%" in attr_value or not attr_value.isdigit() else f"{int(attr_value):,}"),
-                COLOR_WHITE,
-                font=dna_font_26,
-                anchor="rm",
-            )
-            con_weapon_mod_bg.alpha_composite(weapon_attr, (290, 250))
-
-        card.alpha_composite(con_weapon_mod_bg, (0, h_index))
-        h_index += 450
+    for weapon_section in weapon_sections:
+        card.alpha_composite(weapon_section, (0, h_index))
+        h_index += weapon_section.height
 
     card.alpha_composite(div_img, (0, h_index))
     h_index += div_img.height
@@ -484,6 +519,9 @@ async def draw_role_card(bot: Bot, ev: Event, char_name: str):
 
     card.alpha_composite(all_mod_bg, (0, h_index))
     h_index += 500
+
+    card.alpha_composite(damage_section, (50, h_index + 20))
+    h_index += damage_section.height + 40
 
     # 头像等（已在前面生成并用于计算总高度）
     card.alpha_composite(avatar_title, (0, h_index))

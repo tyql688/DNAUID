@@ -2,7 +2,7 @@ import json
 import random
 import asyncio
 import inspect
-from typing import Any, Dict, List, Union, Literal, Mapping, Optional
+from typing import Any, Dict, List, Union, Literal, Mapping, TypeVar, Optional
 from datetime import datetime
 
 import aiohttp
@@ -27,6 +27,8 @@ from .api import (
     HAVE_SIGN_IN_URL,
     ACTIVITY_LIST_URL,
     CALENDAR_LIST_URL,
+    DAMAGE_CONFIG_URL,
+    DAMAGE_WEAPON_URL,
     GET_POST_LIST_URL,
     REFRESH_TOKEN_URL,
     ROLE_FOR_TOOL_URL,
@@ -34,19 +36,47 @@ from .api import (
     WEAPON_DETAIL_URL,
     WIKI_HOME_LIST_URL,
     GET_POST_DETAIL_URL,
+    DAMAGE_CALCULATE_URL,
     GET_TASK_PROCESS_URL,
+    DAMAGE_ENVIRONMENT_URL,
     GET_RSA_PUBLIC_KEY_URL,
     ITEM_WEEKLY_REPORT_URL,
     get_local_proxy_url,
     get_need_proxy_func,
     get_no_need_proxy_func,
 )
+from .auth import (
+    LoginChannel,
+    DNACapability,
+    get_token_user_id,
+    get_channel_credentials,
+    get_capability_credentials,
+)
 from .dnum import check_decrypt_dnum
 from .sign import get_dev_code, get_signed_headers_and_body
 from ..utils import timed_async_cache
-from .request_util import RespCode, DNAApiResp, get_base_header
+from .sign_h5 import generate_headers_h5
+from .sign_130 import generate_headers_130
+from .damage_model import (
+    BuildConfigData,
+    WeaponCalculateData,
+    CharacterCalculateData,
+    WeaponCalculateRequest,
+    EnvironmentCalculateData,
+    CharacterCalculateRequest,
+    EnvironmentCalculateRequest,
+)
+from .request_util import (
+    RespCode,
+    DNAApiResp,
+    get_base_header,
+    get_damage_header,
+    get_web_login_header,
+)
 from ..database.models import DNAUser
 from ..constants.constants import DNA_GAME_ID
+
+_DamageDataT = TypeVar("_DamageDataT")
 
 
 class DNAApi:
@@ -76,51 +106,65 @@ class DNAApi:
 
     async def get_dna_user(self, uid: str, user_id: str, bot_id: str) -> Optional[DNAUser]:
         dna_user = await DNAUser.select_dna_user(uid, user_id, bot_id)
-        if not dna_user or not dna_user.cookie:
-            return
-
-        if dna_user.status == "无效":
-            return
-
-        return await self.check_cookie(dna_user)
+        if dna_user is None:
+            return None
+        return await self._prepare_dna_user(dna_user)
 
     async def get_random_dna_user(self) -> Optional[DNAUser]:
-        dna_users = await DNAUser.get_dna_all_user()
+        dna_users = await DNAUser.get_all_card_users()
         if not dna_users:
             return None
         random.shuffle(dna_users)
         for dna_user in dna_users[:3]:
-            check_cookie = await self.check_cookie(dna_user)
-            if check_cookie:
-                return check_cookie
+            available_user = await self._prepare_dna_user(dna_user)
+            if available_user is not None:
+                return available_user
+        return None
+
+    async def _prepare_dna_user(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAUser | None:
+        app_credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if app_credentials is not None:
+            checked_user = await self.check_cookie(dna_user)
+            if checked_user is not None:
+                return checked_user
+
+        web_credentials = get_channel_credentials(
+            dna_user,
+            LoginChannel.WEB,
+        )
+        if web_credentials is not None:
+            return dna_user
         return None
 
     async def check_cookie(self, dna_user: DNAUser) -> Optional[DNAUser]:
-        if not dna_user:
-            return
-
-        if not dna_user.cookie:
-            return
-
-        if dna_user.status == "无效":
-            return
-
-        dr = check_decrypt_dnum(dna_user.d_num)
-        logger.debug(
-            f"check_cookie: uid={dna_user.uid},"
-            f" token={dna_user.cookie},"
-            f" refresh_token={dna_user.refresh_token},"
-            f" d_num={dna_user.d_num},"
-            f" dr={dr}"
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
         )
+        if credentials is None:
+            return None
+
+        dr = check_decrypt_dnum(credentials.d_num)
+        logger.debug(f"[DNA登录] 检查 App 凭据 uid={dna_user.uid} dr={dr}")
         # if dr > 0:
         #     return dna_user
 
-        if dr == 0 and dna_user.refresh_token:
-            res = await self.refresh_token(dna_user.cookie, dna_user.refresh_token, dna_user.dev_code)
+        if dr == 0 and credentials.refresh_token != "":
+            res = await self.refresh_token(
+                credentials.token,
+                credentials.refresh_token,
+                credentials.dev_code,
+            )
             if res.success and res.data and isinstance(res.data, dict):
                 dna_user.cookie = res.data["token"]
                 dna_user.d_num = res.data["dNum"]
+                dna_user.status = ""
                 await DNAUser.update_data_by_data(
                     select_data={"user_id": dna_user.user_id, "bot_id": dna_user.bot_id, "uid": dna_user.uid},
                     update_data={
@@ -131,10 +175,18 @@ class DNAApi:
                 )
                 return dna_user
 
-        login_log = await self.login_log(dna_user.cookie, dna_user.dev_code)
+        login_log = await self.login_log(
+            credentials.token,
+            credentials.dev_code,
+        )
         if not login_log.success:
-            await DNAUser.mark_cookie_invalid(dna_user.uid, dna_user.cookie, "无效")
-            return
+            await DNAUser.mark_cookie_invalid(
+                dna_user.uid,
+                credentials.token,
+                "无效",
+            )
+            dna_user.status = "无效"
+            return None
 
         return dna_user
 
@@ -157,30 +209,71 @@ class DNAApi:
 
         return rsa_pub
 
-    async def get_sms_code(self, mobile: Union[int, str], v_json: str, dev_code: str):
-        headers = await get_base_header(dev_code=dev_code)
-        payload = {"isCaptcha": 1, "mobile": mobile, "vJson": v_json}
-
+    async def _get_web_signed_headers_and_body(
+        self,
+        payload: dict[str, Any],
+        dev_code: str,
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        headers = get_web_login_header(dev_code)
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
-            url=GET_SMS_CODE_URL,
-            header=headers,
-            data=payload,
-            rsa_public_key=rsa_pub,
-        )
-        return await self._dna_request(GET_SMS_CODE_URL, "POST", headers, data=payload)
+        return generate_headers_h5(headers, payload, rsa_pub)
 
-    async def login(self, mobile: Union[int, str], code: str, dev_code: str):
-        header = await get_base_header(dev_code)
+    async def get_web_sms_code(
+        self,
+        mobile: str | int,
+        v_json: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
+        payload = {"mobile": mobile, "vJson": v_json}
+        headers, signed_payload = await self._get_web_signed_headers_and_body(
+            payload,
+            dev_code,
+        )
+        return await self._dna_request(
+            GET_SMS_CODE_URL,
+            "POST",
+            headers,
+            data=signed_payload,
+        )
+
+    async def login_app(
+        self,
+        mobile: str | int,
+        code: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
+        headers = await get_base_header(dev_code)
         payload = {"code": code, "devCode": dev_code, "gameList": DNA_GAME_ID, "loginType": 1, "mobile": mobile}
         rsa_pub = await self.get_rsa_public_key()
         headers, payload = get_signed_headers_and_body(
             url=LOGIN_URL,
-            header=header,
+            header=headers,
             data=payload,
             rsa_public_key=rsa_pub,
         )
         return await self._dna_request(LOGIN_URL, "POST", headers, data=payload)
+
+    async def login_web(
+        self,
+        mobile: str | int,
+        code: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
+        payload = {
+            "mobile": mobile,
+            "code": code,
+            "gameList": DNA_GAME_ID,
+        }
+        headers, signed_payload = await self._get_web_signed_headers_and_body(
+            payload,
+            dev_code,
+        )
+        return await self._dna_request(
+            LOGIN_URL,
+            "POST",
+            headers,
+            data=signed_payload,
+        )
 
     async def refresh_token(self, token: str, refresh_token: str, dev_code: str):
         headers = await get_base_header(dev_code=dev_code, token=token)
@@ -201,7 +294,11 @@ class DNAApi:
         await asyncio.sleep(1 + random.uniform(0, 0.5))
         return res
 
-    async def get_role_list(self, token: str, dev_code: str):
+    async def get_app_role_list(
+        self,
+        token: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
         headers = await get_base_header(dev_code=dev_code, token=token)
         payload = {}
         rsa_pub = await self.get_rsa_public_key()
@@ -218,10 +315,28 @@ class DNAApi:
         if not dna_user:
             return DNAApiResp[Any].err("获取DNA用户失败")
 
-        return await self.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+        return await self.get_default_role_for_tool(dna_user)
 
-    async def get_default_role_for_tool(self, token: str, dev_code: str):
-        header = await get_base_header(dev_code, token=token)
+    async def get_default_role_for_tool(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ROLE_CARD,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("当前账号没有可用的角色卡片凭据")
+        if credentials.channel is LoginChannel.WEB:
+            return await self.get_web_default_role(
+                credentials.token,
+                credentials.dev_code,
+            )
+
+        header = await get_base_header(
+            credentials.dev_code,
+            token=credentials.token,
+        )
         payload = {"type": 1}
         rsa_pub = await self.get_rsa_public_key()
         headers, payload = get_signed_headers_and_body(
@@ -232,18 +347,197 @@ class DNAApi:
         )
         return await self._dna_request(ROLE_FOR_TOOL_URL, "POST", headers, data=payload)
 
-    async def get_role_detail(self, token: str, char_id: str, char_eid: str, dev_code: str):
-        headers = await get_base_header(dev_code=dev_code, token=token)
-        data = {"charId": char_id, "charEid": char_eid, "type": 1}
+    async def get_web_default_role(
+        self,
+        token: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
+        user_id = get_token_user_id(token)
+        if user_id is None:
+            return DNAApiResp[Any].err("Web token 格式错误")
+
+        headers = await get_base_header(dev_code, token=token)
+        payload = {"otherUserId": user_id, "type": 2}
+        rsa_pub = await self.get_rsa_public_key()
+        headers, payload = generate_headers_130(
+            headers,
+            payload,
+            rsa_pub,
+        )
+        return await self._dna_request(
+            ROLE_FOR_TOOL_URL,
+            "POST",
+            headers,
+            data=payload,
+        )
+
+    async def _damage_request(
+        self,
+        dna_user: DNAUser,
+        url: str,
+        response_model: type[DNAApiResp[_DamageDataT]],
+        payload: dict[str, Any] | None = None,
+    ) -> DNAApiResp[_DamageDataT]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.DAMAGE_CALCULATION,
+        )
+        if credentials is None:
+            return response_model.err("伤害计算需要 Web 登录")
+
+        response = await self._dna_request(
+            url,
+            "POST",
+            get_damage_header(credentials.token),
+            json_data=payload,
+        )
+        return response_model.model_validate(response.model_dump())
+
+    async def get_damage_config(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[BuildConfigData]:
+        return await self._damage_request(
+            dna_user,
+            DAMAGE_CONFIG_URL,
+            DNAApiResp[BuildConfigData],
+        )
+
+    async def calculate_damage(
+        self,
+        dna_user: DNAUser,
+        request: CharacterCalculateRequest,
+    ) -> DNAApiResp[CharacterCalculateData]:
+        payload = request.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
+        )
+        return await self._damage_request(
+            dna_user,
+            DAMAGE_CALCULATE_URL,
+            DNAApiResp[CharacterCalculateData],
+            payload,
+        )
+
+    async def calculate_weapon(
+        self,
+        dna_user: DNAUser,
+        request: WeaponCalculateRequest,
+    ) -> DNAApiResp[WeaponCalculateData]:
+        payload = request.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
+        )
+        return await self._damage_request(
+            dna_user,
+            DAMAGE_WEAPON_URL,
+            DNAApiResp[WeaponCalculateData],
+            payload,
+        )
+
+    async def calculate_environment(
+        self,
+        dna_user: DNAUser,
+        request: EnvironmentCalculateRequest,
+    ) -> DNAApiResp[EnvironmentCalculateData]:
+        payload = request.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
+        )
+        return await self._damage_request(
+            dna_user,
+            DAMAGE_ENVIRONMENT_URL,
+            DNAApiResp[EnvironmentCalculateData],
+            payload,
+        )
+
+    async def get_role_detail(
+        self,
+        dna_user: DNAUser,
+        char_id: str,
+        char_eid: str,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ROLE_CARD,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("当前账号没有可用的角色卡片凭据")
+
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
+        data: dict[str, str | int] = {
+            "charId": char_id,
+            "charEid": char_eid,
+            "type": 1,
+        }
+        if credentials.channel is LoginChannel.WEB:
+            user_id = get_token_user_id(credentials.token)
+            if user_id is None:
+                return DNAApiResp[Any].err("Web token 格式错误")
+            data.update(
+                {
+                    "type": 2,
+                    "userId": user_id,
+                    "otherUserId": user_id,
+                }
+            )
         return await self._dna_request(ROLE_DETAIL_URL, "POST", headers, data=data)
 
-    async def get_weapon_detail(self, token: str, weapon_id: int, weapon_eid: str, dev_code: str):
-        headers = await get_base_header(dev_code=dev_code, token=token)
-        data = {"weaponId": weapon_id, "weaponEid": weapon_eid, "type": 1}
+    async def get_weapon_detail(
+        self,
+        dna_user: DNAUser,
+        weapon_id: int,
+        weapon_eid: str,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ROLE_CARD,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("当前账号没有可用的角色卡片凭据")
+
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
+        data: dict[str, str | int] = {
+            "weaponId": weapon_id,
+            "weaponEid": weapon_eid,
+            "type": 1,
+        }
+        if credentials.channel is LoginChannel.WEB:
+            user_id = get_token_user_id(credentials.token)
+            if user_id is None:
+                return DNAApiResp[Any].err("Web token 格式错误")
+            data.update(
+                {
+                    "type": 2,
+                    "userId": user_id,
+                    "otherUserId": user_id,
+                }
+            )
         return await self._dna_request(WEAPON_DETAIL_URL, "POST", headers, data=data)
 
-    async def get_short_note_info(self, token: str, dev_code: str):
-        headers = await get_base_header(dev_code=dev_code, token=token)
+    async def get_short_note_info(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         payload = {}
         rsa_pub = await self.get_rsa_public_key()
         headers, payload = get_signed_headers_and_body(
@@ -254,28 +548,79 @@ class DNAApi:
         )
         return await self._dna_request(SHORT_NOTE_URL, "POST", headers)
 
-    async def get_item_weekly_report(self, token: str, dev_code: str, week_type: int = 1):
+    async def get_item_weekly_report(
+        self,
+        dna_user: DNAUser,
+        week_type: int = 1,
+    ) -> DNAApiResp[Any]:
         """获取周报（资源获取统计）
 
         Args:
             week_type: 1=本周, 2=上周
         """
-        headers = await get_base_header(dev_code=dev_code, token=token)
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {"weekType": week_type}
         return await self._dna_request(ITEM_WEEKLY_REPORT_URL, "POST", headers, data=data)
 
-    async def have_sign_in(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code, token=token)
+    async def have_sign_in(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {"gameId": DNA_GAME_ID}
         return await self._dna_request(HAVE_SIGN_IN_URL, "POST", headers, data=data)
 
-    async def sign_calendar(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code, token=token)
+    async def sign_calendar(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {"gameId": DNA_GAME_ID}
         return await self._dna_request(SIGN_CALENDAR_URL, "POST", headers, data=data)
 
-    async def game_sign(self, token: str, day_award_id: int, period: int, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code, token=token)
+    async def game_sign(
+        self,
+        dna_user: DNAUser,
+        day_award_id: int,
+        period: int,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_ACTION,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            credentials.dev_code,
+            token=credentials.token,
+        )
         payload = {"dayAwardId": day_award_id, "periodId": period, "signinType": 1}
         rsa_pub = await self.get_rsa_public_key()
         headers, payload = get_signed_headers_and_body(
@@ -286,8 +631,20 @@ class DNAApi:
         )
         return await self._dna_request(GAME_SIGN_URL, "POST", headers, data=payload)
 
-    async def bbs_sign(self, token: str, dev_code: Optional[str] = None):
-        headers = await get_base_header(dev_code=dev_code, token=token)
+    async def bbs_sign(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_ACTION,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         payload = {"gameId": DNA_GAME_ID}
         rsa_pub = await self.get_rsa_public_key()
         headers, payload = get_signed_headers_and_body(
@@ -298,9 +655,21 @@ class DNAApi:
         )
         return await self._dna_request(BBS_SIGN_URL, "POST", headers, data=payload)
 
-    async def get_task_process(self, token: str, dev_code: Optional[str] = None):
+    async def get_task_process(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
         """获取任务进度"""
-        headers = await get_base_header(dev_code=dev_code, token=token)
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {"gameId": DNA_GAME_ID}
         try:
             return await self._dna_request(GET_TASK_PROCESS_URL, "POST", headers, data=data)
@@ -312,9 +681,21 @@ class DNAApi:
         3600,
         lambda x: x and isinstance(x, DNAApiResp) and x.is_success,
     )
-    async def get_post_list(self, token: str, dev_code: Optional[str] = None):
+    async def get_post_list(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
         """获取帖子列表"""
-        headers = await get_base_header(dev_code=dev_code, token=token)
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_QUERY,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {
             "forumId": 46,  # 全部
             "gameId": DNA_GAME_ID,
@@ -329,9 +710,25 @@ class DNAApi:
             logger.exception("get_post_list", e)
             return DNAApiResp[Any].err("请求皎皎角服务失败")
 
-    async def get_post_detail(self, post_id: str, token: Optional[str] = None, dev_code: Optional[str] = None):
+    async def get_post_detail(
+        self,
+        post_id: str,
+        dna_user: DNAUser | None = None,
+    ) -> DNAApiResp[Any]:
         """获取帖子详情"""
-        header = await get_base_header(dev_code=dev_code, token=token)
+        if dna_user is None:
+            header = await get_base_header()
+        else:
+            credentials = get_capability_credentials(
+                dna_user,
+                DNACapability.ACCOUNT_QUERY,
+            )
+            if credentials is None:
+                return DNAApiResp[Any].err("该功能需要 App 登录")
+            header = await get_base_header(
+                dev_code=credentials.dev_code,
+                token=credentials.token,
+            )
         data = {"postId": post_id}
         try:
             return await self._dna_request(GET_POST_DETAIL_URL, "POST", header, data=data)
@@ -341,12 +738,20 @@ class DNAApi:
 
     async def do_like(
         self,
-        token: str,
+        dna_user: DNAUser,
         post: Dict[str, Any],
-        dev_code: Optional[str] = None,
-    ):
+    ) -> DNAApiResp[Any]:
         """点赞帖子"""
-        headers = await get_base_header(dev_code=dev_code, token=token)
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_ACTION,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        headers = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
 
         payload = {
             "forumId": post.get("gameForumId"),
@@ -372,9 +777,21 @@ class DNAApi:
             logger.exception("do_like", e)
             return DNAApiResp[Any].err("请求皎皎角服务失败")
 
-    async def do_share(self, token: str, dev_code: Optional[str] = None):
+    async def do_share(
+        self,
+        dna_user: DNAUser,
+    ) -> DNAApiResp[Any]:
         """分享帖子任务"""
-        header = await get_base_header(dev_code=dev_code, token=token)
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_ACTION,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
+        header = await get_base_header(
+            dev_code=credentials.dev_code,
+            token=credentials.token,
+        )
         data = {"gameId": DNA_GAME_ID}
         try:
             return await self._dna_request(SHARE_POST_URL, "POST", header, data=data)
@@ -384,14 +801,22 @@ class DNAApi:
 
     async def do_reply(
         self,
-        token: str,
+        dna_user: DNAUser,
         post: Dict[str, Any],
         content: str,
-        dev_code: Optional[str] = None,
-    ):
+    ) -> DNAApiResp[Any]:
         """回复帖子"""
+        credentials = get_capability_credentials(
+            dna_user,
+            DNACapability.ACCOUNT_ACTION,
+        )
+        if credentials is None:
+            return DNAApiResp[Any].err("该功能需要 App 登录")
         content_json = json.dumps([{"content": content, "contentType": "1"}])
-        header = await get_base_header(dev_code, token=token)
+        header = await get_base_header(
+            credentials.dev_code,
+            token=credentials.token,
+        )
         rsa_pub = await self.get_rsa_public_key()
         payload = {
             "postId": post.get("postId"),
@@ -558,7 +983,11 @@ class DNAApi:
                             pass
 
                     logger.debug(
-                        f"[DNA] url:[{url}] func:[{func}] is_proxy:[{is_proxy}]  params:[{params}] headers:[{header}] data:[{data}] raw_res:{raw_res}"  # noqa: E501
+                        f"[DNA] url:[{url}] func:[{func}] "
+                        f"is_proxy:[{is_proxy}] params:[{params}] "
+                        f"headers:[{header}] json_data:[{json_data}] "
+                        f"data:[{data}] "
+                        f"raw_res:{raw_res}"
                     )
 
                     res = DNAApiResp[Any].model_validate(raw_res)

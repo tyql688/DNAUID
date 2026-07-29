@@ -55,13 +55,13 @@ async def draw_stamina_img(bot: Bot, ev: Event):
         await dna_token_invalid(bot, ev)
         return
 
-    short_note_info = await dna_api.get_short_note_info(dna_user.cookie, dna_user.dev_code)
+    short_note_info = await dna_api.get_short_note_info(dna_user)
     if not short_note_info.is_success:
         await dna_not_found(bot, ev, "日常便签数据")
         return
     short_note_info = DNARoleShortNoteRes.model_validate(short_note_info.data)
 
-    role_for_tool_info = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    role_for_tool_info = await dna_api.get_default_role_for_tool(dna_user)
     if not role_for_tool_info.is_success:
         await dna_not_found(bot, ev, "角色列表信息")
         return

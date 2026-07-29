@@ -28,6 +28,26 @@ h5_base_header = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
 }
 
+WEB_LOGIN_BASE_HEADER = {
+    "version": "3.11.1",
+    "source": "h5",
+    "Content-Type": "application/x-www-form-urlencoded;",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0"
+    ),
+}
+
+DAMAGE_BASE_HEADER = {
+    "accept": "application/json",
+    "content-type": "application/json;charset=UTF-8",
+    "source": "h5",
+    "version": "3.11.1",
+    "origin": "https://dnabbs.yingxiong.com",
+    "referer": "https://dnabbs.yingxiong.com/",
+}
+
 
 async def get_base_header(
     dev_code: Optional[str] = None,
@@ -46,6 +66,25 @@ async def get_base_header(
         header["refer"] = "https://dnabbs.yingxiong.com/"
     if token:
         header["token"] = token
+    return header
+
+
+def get_web_login_header(
+    dev_code: str,
+    token: str | None = None,
+) -> dict[str, str]:
+    header = copy.deepcopy(WEB_LOGIN_BASE_HEADER)
+    header["devCode"] = dev_code
+    header["Origin"] = "https://dnabbs.yingxiong.com"
+    header["Referer"] = "https://dnabbs.yingxiong.com/"
+    if token is not None:
+        header["token"] = token
+    return header
+
+
+def get_damage_header(token: str) -> dict[str, str]:
+    header = copy.deepcopy(DAMAGE_BASE_HEADER)
+    header["token"] = token
     return header
 
 

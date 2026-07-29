@@ -196,25 +196,25 @@ async def draw_sign_calendar(bot: Bot, ev: Event):
     if not dna_user:
         return
 
-    have_sign_in_resp = await dna_api.have_sign_in(dna_user.cookie, dna_user.dev_code)
+    have_sign_in_resp = await dna_api.have_sign_in(dna_user)
     if not have_sign_in_resp.is_success or not isinstance(have_sign_in_resp.data, dict):
         return
     bbs_total_sign_in_day = have_sign_in_resp.data.get("totalSignInDay", 0)
 
-    sign_resp = await dna_api.sign_calendar(dna_user.cookie, dna_user.dev_code)
+    sign_resp = await dna_api.sign_calendar(dna_user)
     if not sign_resp.is_success:
         return
 
     sign_raw_data = sign_resp.data if isinstance(sign_resp.data, dict) else {}
     sign_data = DNACalendarSignRes.model_validate(sign_raw_data)
 
-    task_process_resp = await dna_api.get_task_process(dna_user.cookie, dna_user.dev_code)
+    task_process_resp = await dna_api.get_task_process(dna_user)
     if not task_process_resp.is_success:
         return
 
     task_process = DNATaskProcessRes.model_validate(task_process_resp.data)
 
-    default_role = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    default_role = await dna_api.get_default_role_for_tool(dna_user)
     if not default_role.is_success:
         await dna_not_found(bot, ev, "角色列表信息")
         return

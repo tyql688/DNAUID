@@ -27,6 +27,10 @@ class DNALoginRes(BaseModel):
     refreshToken: str = Field(exclude=True, description="refreshToken")
 
 
+class DNATokenPayload(BaseModel):
+    userId: str | int = Field(description="社区用户ID")
+
+
 class DNARoleShowVo(BaseModel):
     roleId: str = Field(description="roleId")
     headUrl: Optional[str] = Field(description="headUrl")
@@ -221,6 +225,7 @@ class RoleDetail(BaseModel):
     attribute: RoleAttribute = Field(description="角色属性")
     skills: List[RoleSkill] = Field(description="角色技能")
     paint: str = Field(description="立绘")
+    charId: int = Field(description="角色配置ID")
     charName: str = Field(description="角色名称")
     elementIcon: str = Field(description="元素图标")
     traces: List[RoleTrace] = Field(description="溯源")

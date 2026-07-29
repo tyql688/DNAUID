@@ -12,6 +12,10 @@ GET_SMS_CODE_URL = f"{MAIN_URL}/user/getSmsCode"
 LOGIN_LOG_URL = f"{MAIN_URL}/user/login/log"
 ROLE_LIST_URL = f"{MAIN_URL}/role/list"
 ROLE_FOR_TOOL_URL = f"{MAIN_URL}/role/defaultRoleForTool"
+DAMAGE_CONFIG_URL = f"{MAIN_URL}/role/build/config"
+DAMAGE_CALCULATE_URL = f"{MAIN_URL}/role/build/calculate"
+DAMAGE_WEAPON_URL = f"{MAIN_URL}/role/build/calculateWeapon"
+DAMAGE_ENVIRONMENT_URL = f"{MAIN_URL}/role/build/calculateEnvironment"
 # role detail
 ROLE_DETAIL_URL = f"{MAIN_URL}/role/getCharDetail"
 # weapon detail

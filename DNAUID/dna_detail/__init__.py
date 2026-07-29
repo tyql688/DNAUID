@@ -12,15 +12,36 @@ from ..utils.constants.constants import PATTERN
 dna_role_detail_card = SV("dna角色详情卡片")
 dna_original_image = SV("dna角色原图")
 
+ROLE_DETAIL_PATTERN = (
+    rf"^(?P<char_name>{PATTERN})(?:面板|信息|详情|面包|🍞)"
+    rf"(?:\s*[+＋]\s*(?P<weapon_name_1>{PATTERN}))?"
+    rf"(?:\s*[+＋]\s*(?P<weapon_name_2>{PATTERN}))?$"
+)
+
 
 @dna_role_detail_card.on_regex(
-    rf"^(?P<char_name>{PATTERN})(面板|信息|详情|面包|🍞)$",
+    ROLE_DETAIL_PATTERN,
     block=True,
 )
 async def send_role_detail_card(bot: Bot, ev: Event):
-    char_name = ev.regex_dict.get("char_name", "")
-    logger.info(f"[DNA Detail] 触发命令: raw_text={ev.raw_text}, char_name={char_name}, at={ev.at}")
-    await draw_role_card(bot, ev, char_name)
+    char_name = ev.regex_dict["char_name"]
+    weapon_names = tuple(
+        name
+        for name in (
+            ev.regex_dict.get("weapon_name_1"),
+            ev.regex_dict.get("weapon_name_2"),
+        )
+        if name is not None
+    )
+    logger.info(
+        f"[DNA Detail] 触发命令: raw_text={ev.raw_text}, char_name={char_name}, weapon_names={weapon_names}, at={ev.at}"
+    )
+    await draw_role_card(
+        bot,
+        ev,
+        char_name,
+        weapon_names=weapon_names,
+    )
 
 
 @dna_original_image.on_fullmatch("原图", block=True)

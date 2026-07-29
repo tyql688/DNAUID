@@ -47,12 +47,12 @@ async def draw_weekly_report_img(bot: Bot, ev: Event, week_type: int = 1):
     if not dna_user:
         return await dna_token_invalid(bot, ev)
 
-    report_resp = await dna_api.get_item_weekly_report(dna_user.cookie, dna_user.dev_code, week_type)
+    report_resp = await dna_api.get_item_weekly_report(dna_user, week_type)
     if not report_resp.is_success:
         return await dna_not_found(bot, ev, "周报数据")
     report = DNAItemWeeklyReportRes.model_validate(report_resp.data)
 
-    role_resp = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    role_resp = await dna_api.get_default_role_for_tool(dna_user)
     if not role_resp.is_success:
         return await dna_not_found(bot, ev, "角色列表信息")
     role_show = DNARoleForToolRes.model_validate(role_resp.data).roleInfo.roleShow

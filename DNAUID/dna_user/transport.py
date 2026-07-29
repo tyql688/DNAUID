@@ -14,6 +14,7 @@ from pydantic import Field, BaseModel, ConfigDict
 
 from gsuid_core.logger import logger
 
+from ..utils.api.auth import LoginChannel
 from ..dna_config.dna_config import DNAConfig
 
 START_TIMEOUT_S = 10.0
@@ -22,9 +23,10 @@ POLL_INTERVAL_S = 2.0
 LOGIN_TTL_S = 600
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class TransportResult:
     status: str  # success | failed | expired
+    channel: LoginChannel = LoginChannel.APP
     msg: str = ""
     token: str = ""
     dev_code: str = ""
@@ -43,8 +45,12 @@ class _ProtocolModel(BaseModel):
 
 
 class _Credential(_ProtocolModel):
-    token: str = Field(description="皎皎角 token（落库为 cookie）")
+    token: str = Field(description="皎皎角 token")
     dev_code: str = Field(description="登录时使用的设备码")
+    channel: LoginChannel = Field(
+        default=LoginChannel.APP,
+        description="登录来源，旧服务未返回时按 App 处理",
+    )
     d_num: str = Field(default="", description="皎皎角 dNum")
     refresh_token: str = Field(default="", description="皎皎角 refreshToken")
 
@@ -84,13 +90,19 @@ def _to_result(payload: _StatusModel) -> TransportResult | None:
     if payload.status not in {"success", "failed", "expired"}:
         return None
     cred = payload.credential
+    if cred is None:
+        return TransportResult(
+            status=payload.status,
+            msg=payload.msg,
+        )
     return TransportResult(
         status=payload.status,
+        channel=cred.channel,
         msg=payload.msg,
-        token=cred.token if cred else "",
-        dev_code=cred.dev_code if cred else "",
-        d_num=cred.d_num if cred else "",
-        refresh_token=cred.refresh_token if cred else "",
+        token=cred.token,
+        dev_code=cred.dev_code,
+        d_num=cred.d_num,
+        refresh_token=cred.refresh_token,
     )
 
 
@@ -132,7 +144,10 @@ class _Base:
             raise TransportError(f"外置登录服务网络错误 url={url}: {err!r}") from err
 
         if resp.status_code != 200:
-            raise TransportError(f"外置登录服务 start 返回 HTTP {resp.status_code} url={url}: {resp.text or '<empty>'}")
+            response_text = resp.text
+            if response_text == "":
+                response_text = "<empty>"
+            raise TransportError(f"外置登录服务 start 返回 HTTP {resp.status_code} url={url}: {response_text}")
 
         # 登录页 URL 由 DNAUID 自己用 base_url 拼，dna-login 不再回传
         return f"{self.base_url}/dna/i/{auth}"

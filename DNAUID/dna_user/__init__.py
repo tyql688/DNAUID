@@ -4,7 +4,6 @@ from gsuid_core.sv import SV
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
-from ..utils import dna_api
 from ..utils.utils import is_uid_hidden
 from .login_router import get_cookie, page_login, token_login
 from ..utils.msgs.notify import (
@@ -49,16 +48,18 @@ async def send_dna_logout_msg(bot: Bot, ev: Event):
     if not uid:
         await send_dna_notify(bot, ev, "当前并未登录")
         return
-    else:
-        await DNABind.delete_uid(ev.user_id, ev.bot_id, uid)
 
-    dna_user = await dna_api.get_dna_user(uid, ev.user_id, ev.bot_id)
+    dna_user = await DNAUser.select_dna_user(
+        uid,
+        ev.user_id,
+        ev.bot_id,
+    )
     if not dna_user:
         await send_dna_notify(bot, ev, "当前并未登录")
         return
-    else:
-        await DNAUser.delete_cookie(ev.user_id, ev.bot_id, uid)
 
+    await DNABind.delete_uid(ev.user_id, ev.bot_id, uid)
+    await DNAUser.delete_cookie(ev.user_id, ev.bot_id, uid)
     await send_dna_notify(bot, ev, "成功退出登录")
 
 

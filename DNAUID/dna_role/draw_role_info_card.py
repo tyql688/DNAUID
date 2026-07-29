@@ -81,7 +81,7 @@ async def draw_role_info_card(bot: Bot, ev: Event):
         await dna_token_invalid(bot, ev)
         return
 
-    default_role = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    default_role = await dna_api.get_default_role_for_tool(dna_user)
     if not default_role.is_success:
         await dna_not_found(bot, ev, "角色列表信息")
         return

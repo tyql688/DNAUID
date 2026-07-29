@@ -7,7 +7,7 @@ from gsuid_core.logger import logger
 from ..utils import dna_api
 from .reply_temps import get_random_reply
 from ..utils.api.model import DNABBSTask, DNATaskProcessRes, DNACalendarSignRes
-from ..utils.database.models import DNASign
+from ..utils.database.models import DNASign, DNAUser
 from ..utils.constants.sign_target import SignTarget
 from ..utils.constants.sign_bbs_mark import BBSMarkName
 
@@ -77,14 +77,11 @@ class SignService:
 
     def __init__(
         self,
-        uid: str,
-        token: str,
-        dev_code: Optional[str] = None,
+        dna_user: DNAUser,
         delay: Tuple[int, int] = (0, 1),
     ):
-        self.uid = uid
-        self.token = token
-        self.dev_code = dev_code
+        self.dna_user = dna_user
+        self.uid = dna_user.uid
         self.msg_temp: Dict[str, Union[bool, str]] = {}
         self.bbs_states: Dict[str, Union[bool, str]] = {
             BBSMarkName.BBS_SIGN: False,
@@ -198,7 +195,7 @@ class SignService:
         if self.dna_sign.game_sign == SignTarget.GAME_SIGN:
             return
 
-        res = await dna_api.sign_calendar(self.token, self.dev_code)
+        res = await dna_api.sign_calendar(self.dna_user)
         if not res.is_success:
             return True
 
@@ -226,7 +223,11 @@ class SignService:
         today_sign_award = calendar_sign.dayAward[calendar_sign.signinTime]
 
         # 开始签到
-        res = await dna_api.game_sign(self.token, today_sign_award.id, today_sign_award.periodId, self.dev_code)
+        res = await dna_api.game_sign(
+            self.dna_user,
+            today_sign_award.id,
+            today_sign_award.periodId,
+        )
         if res.is_success:
             self.msg_temp["signed"] = True
             self.dna_sign.game_sign = SignTarget.GAME_SIGN
@@ -244,7 +245,7 @@ class SignService:
             return
 
         # 获取任务进度
-        res = await dna_api.get_task_process(self.token, self.dev_code)
+        res = await dna_api.get_task_process(self.dna_user)
         if not res.is_success:
             return
 
@@ -265,7 +266,7 @@ class SignService:
                 await self._bbs_sign(task)
                 continue
 
-            post_list = await dna_api.get_post_list(self.token, self.dev_code)
+            post_list = await dna_api.get_post_list(self.dna_user)
             if not post_list.is_success or not post_list.data or not isinstance(post_list.data, dict):
                 continue
             posts = post_list.data.get("postList", [])
@@ -288,7 +289,7 @@ class SignService:
             self.bbs_states[BBSMarkName.BBS_SIGN] = "skip"
             return
 
-        res = await dna_api.bbs_sign(self.token, self.dev_code)
+        res = await dna_api.bbs_sign(self.dna_user)
         if res.is_success:
             self.dna_sign.bbs_sign = SignTarget.BBS_SIGN
             self.bbs_states[BBSMarkName.BBS_SIGN] = True
@@ -316,7 +317,7 @@ class SignService:
             post_id = post.get("postId")
             if not post_id:
                 continue
-            res = await dna_api.get_post_detail(post_id, self.token, self.dev_code)
+            res = await dna_api.get_post_detail(post_id, self.dna_user)
             if res and res.is_success:
                 self.dna_sign.bbs_detail += 1
             else:
@@ -348,7 +349,7 @@ class SignService:
             post_id = post.get("postId")
             if not post_id:
                 continue
-            res = await dna_api.do_like(self.token, post, self.dev_code)
+            res = await dna_api.do_like(self.dna_user, post)
             if res.is_success:
                 self.dna_sign.bbs_like += 1
             else:
@@ -369,7 +370,7 @@ class SignService:
             self.bbs_states[BBSMarkName.BBS_SHARE] = "skip"
             return
 
-        res = await dna_api.do_share(self.token, self.dev_code)
+        res = await dna_api.do_share(self.dna_user)
         if res.is_success:
             self.dna_sign.bbs_share += 1
 
@@ -392,7 +393,11 @@ class SignService:
             if not post_id:
                 continue
             reply_content = get_random_reply()
-            res = await dna_api.do_reply(self.token, post, reply_content, self.dev_code)
+            res = await dna_api.do_reply(
+                self.dna_user,
+                post,
+                reply_content,
+            )
             if res.is_success:
                 self.dna_sign.bbs_reply += 1
             else:

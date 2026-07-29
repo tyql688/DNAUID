@@ -24,6 +24,11 @@ exec_list.extend(
     [
         "ALTER TABLE DNAUser ADD COLUMN d_num TEXT DEFAULT ''",
         "ALTER TABLE DNAUser ADD COLUMN refresh_token TEXT DEFAULT ''",
+        "ALTER TABLE DNAUser ADD COLUMN web_token TEXT DEFAULT ''",
+        "ALTER TABLE DNAUser ADD COLUMN web_dev_code TEXT DEFAULT ''",
+        "ALTER TABLE DNAUser ADD COLUMN web_d_num TEXT DEFAULT ''",
+        "ALTER TABLE DNAUser ADD COLUMN web_refresh_token TEXT DEFAULT ''",
+        "ALTER TABLE DNAUser ADD COLUMN web_status TEXT DEFAULT ''",
         "ALTER TABLE dnaprivacy ADD COLUMN uid_hidden BOOLEAN DEFAULT 0",
         "ALTER TABLE dna_group_privacy ADD COLUMN force_uid_hidden BOOLEAN DEFAULT NULL",
     ]
@@ -140,6 +145,11 @@ class DNAUser(User, table=True):
     dev_code: str = Field(default=None, title="设备ID")
     d_num: str = Field(default="", title="d_num")
     refresh_token: str = Field(default="", title="refresh_token")
+    web_token: str = Field(default="", title="Web token")
+    web_dev_code: str = Field(default="", title="Web 设备ID")
+    web_d_num: str = Field(default="", title="Web d_num")
+    web_refresh_token: str = Field(default="", title="Web refresh_token")
+    web_status: str = Field(default="", title="Web token 状态")
 
     @classmethod
     @with_session
@@ -199,6 +209,26 @@ class DNAUser(User, table=True):
         result = await session.execute(sql)
         data = result.scalars().all()
         return list(data) if data else []
+
+    @classmethod
+    @with_session
+    async def select_web_user(
+        cls: Type[T_DNAUser],
+        session: AsyncSession,
+        uid: str,
+        user_id: str,
+        bot_id: str,
+    ) -> Optional[T_DNAUser]:
+        sql = select(cls).where(
+            cls.user_id == user_id,
+            cls.uid == uid,
+            cls.bot_id == bot_id,
+            col(cls.web_token) != null(),
+            col(cls.web_token) != "",
+            or_(col(cls.web_status) == null(), col(cls.web_status) == ""),
+        )
+        result = await session.execute(sql)
+        return result.scalars().first()
 
     @classmethod
     @with_session
@@ -271,10 +301,39 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
+    async def get_all_card_users(
+        cls: Type[T_DNAUser],
+        session: AsyncSession,
+    ) -> List[T_DNAUser]:
+        app_available = and_(
+            col(cls.cookie) != null(),
+            col(cls.cookie) != "",
+            or_(col(cls.status) == null(), col(cls.status) == ""),
+        )
+        web_available = and_(
+            col(cls.web_token) != null(),
+            col(cls.web_token) != "",
+            or_(col(cls.web_status) == null(), col(cls.web_status) == ""),
+        )
+        result = await session.execute(select(cls).where(or_(app_available, web_available)))
+        return list(result.scalars().all())
+
+    @classmethod
+    @with_session
     async def delete_all_invalid_cookie(cls, session: AsyncSession):
         """删除所有无效缓存"""
+        app_unavailable = or_(
+            col(cls.status) == "无效",
+            col(cls.cookie) == null(),
+            col(cls.cookie) == "",
+        )
+        web_unavailable = or_(
+            col(cls.web_status) == "无效",
+            col(cls.web_token) == null(),
+            col(cls.web_token) == "",
+        )
         sql = delete(cls).where(
-            or_(col(cls.status) == "无效", col(cls.cookie) == ""),
+            and_(app_unavailable, web_unavailable),
         )
         result = await session.execute(sql)
         return result.rowcount  # type: ignore

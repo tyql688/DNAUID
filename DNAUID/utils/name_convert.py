@@ -83,7 +83,7 @@ async def refresh_name_convert(is_force: bool = False):
     dna_user = await dna_api.get_random_dna_user()
     if not dna_user:
         return False, "没有可用的DNA用户"
-    role_show = await dna_api.get_default_role_for_tool(dna_user.cookie, dna_user.dev_code)
+    role_show = await dna_api.get_default_role_for_tool(dna_user)
     if not role_show.is_success:
         return False, "获取角色列表信息失败"
     role_show = DNARoleForToolRes.model_validate(role_show.data)

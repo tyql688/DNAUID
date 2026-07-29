@@ -49,7 +49,7 @@ async def sign_task(
         expire_uids.append(dna_user.uid)
         return return_msg()
 
-    ss = SignService(dna_user.uid, dna_user.cookie, dna_user.dev_code)
+    ss = SignService(dna_user)
     if await ss.check_status():
         result_msgs.append(ss.turn_msg())
         return return_msg()
