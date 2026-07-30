@@ -158,5 +158,12 @@ async def calculate_role_damage(
     dna_user: DNAUser,
     build: RoleDamageBuild,
 ) -> DNAApiResp[CharacterCalculateData]:
-    request = build_role_damage_request(build)
+    # 构造请求体阶段可能因角色数据不满足伤害计算前置条件而抛 ValueError
+    # （例如艾达有 4 个主技能，与固定 3 档加成表不匹配）。
+    # 此处捕获并降级为失败响应，使伤害段显示错误提示，
+    # 而非让异常冒泡导致整个角色面板命令崩溃。
+    try:
+        request = build_role_damage_request(build)
+    except ValueError as exc:
+        return DNAApiResp[CharacterCalculateData].err(str(exc))
     return await dna_api.calculate_damage(dna_user, request)
