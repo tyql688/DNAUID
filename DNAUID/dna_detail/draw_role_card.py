@@ -35,7 +35,7 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
-from .damage_service import RoleDamageBuild, calculate_role_damage
+from .damage_service import RoleDamageBuild, resolve_damage_build, calculate_role_damage
 from .damage_renderer import draw_role_damage_section
 from .weapon_renderer import draw_weapon_detail_section
 from ..utils.api.model import (
@@ -247,6 +247,9 @@ async def draw_role_card(
         lang_range_weapon_detail=ranged_weapon_detail,
     )
     damage_result = await calculate_role_damage(dna_user, damage_build)
+    # 4 技能角色需按 buildConfig 过滤为 3 个主技能后再渲染，
+    # 否则 renderer 的 3 档校验会抛 ValueError 使整个面板崩溃。
+    damage_build, _filter_err = await resolve_damage_build(dna_user, damage_build)
     damage_section = draw_role_damage_section(damage_build, damage_result)
     weapon_sections: list[Image.Image] = []
     if con_weapon_detail is not None:
