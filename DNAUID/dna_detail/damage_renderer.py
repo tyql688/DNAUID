@@ -7,7 +7,6 @@ from PIL import Image, ImageDraw, ImageFont
 from ..utils.image import COLOR_WHITE, get_smooth_drawer
 from .damage_service import (
     RoleDamageBuild,
-    get_skill_extend_level,
     get_calculation_skill_levels,
 )
 from ..utils.fonts.dna_fonts import (
@@ -437,7 +436,10 @@ def _build_skill_panels(
             raise RuntimeError(f"派生技能 {skill.id} 缺少父技能 {skill.parent_id}")
         children_by_parent[skill.parent_id].append(skill)
 
-    skill_levels = get_calculation_skill_levels(build.role_detail)
+    skill_levels = get_calculation_skill_levels(
+        build.role_detail,
+        tuple(skill.id for skill in root_skills),
+    )
     panels: list[_SkillPanel] = []
     for skill in root_skills:
         if skill.id not in skill_levels:
@@ -742,10 +744,7 @@ def _draw_skill(
     y: int,
 ) -> int:
     height = _skill_height(panel)
-    extend_level = get_skill_extend_level(panel.level)
     progress_text = f"Lv.{panel.level}"
-    if extend_level > 0:
-        progress_text = f"{progress_text} · 小技能 {extend_level}/2"
     data_y = _draw_panel_header(
         image,
         draw,
