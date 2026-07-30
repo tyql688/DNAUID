@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 from ..utils import dna_api
@@ -154,12 +155,65 @@ def build_role_damage_request(
     )
 
 
+async def _resolve_damage_skills(
+    dna_user: DNAUser,
+    build: RoleDamageBuild,
+) -> tuple[RoleDetail, str | None]:
+    """解析用于伤害计算的角色技能列表。
+
+    角色详情可能返回 4 个技能（含 lv1 的大招/被动），但服务端伤害计算只接受
+    /role/build/config 中该角色 skillIds 声明的主技能（通常 3 个）。
+    直接发送全部技能会触发 10000 参数错误（如止流、艾达等多技能角色）。
+
+    这里按 buildConfig 过滤 role_detail.skills：
+    - config 获取失败：降级用原始 skills（保留旧行为，避免 config 故障全员失效）
+    - 该角色 skillIds 为空：返回明确错误（服务端不支持该角色伤害计算）
+    - 否则：返回只含 buildConfig 声明技能的 RoleDetail 副本
+
+    返回 (用于构造请求的 RoleDetail, 错误提示或 None)。
+    """
+    role_detail = build.role_detail
+    if len(role_detail.skills) == 3:
+        return role_detail, None
+
+    config_resp = await dna_api.get_damage_config(dna_user)
+    if not config_resp.is_success or config_resp.data is None:
+        # config 不可用时降级为旧行为：交给下游 3 档校验处理
+        return role_detail, None
+
+    skill_ids_str: str = ""
+    for item in config_resp.data.build_config:
+        if item.third_id == role_detail.charId:
+            skill_ids_str = item.skill_ids or ""
+            break
+
+    if not skill_ids_str:
+        return role_detail, f"角色 {role_detail.charName} 暂不支持伤害计算"
+
+    declared_ids = [int(sid) for sid in skill_ids_str.split(",") if sid]
+    skill_by_id = {s.skillId: s for s in role_detail.skills}
+    filtered = [skill_by_id[sid] for sid in declared_ids if sid in skill_by_id]
+    if len(filtered) != 3:
+        return role_detail, f"角色 {role_detail.charName} 的伤害计算技能配置异常"
+    filtered_detail = role_detail.model_copy(update={"skills": filtered})
+    return filtered_detail, None
+
+
 async def calculate_role_damage(
     dna_user: DNAUser,
     build: RoleDamageBuild,
 ) -> DNAApiResp[CharacterCalculateData]:
+    # 角色详情可能返回 4 个技能（含大招/被动），而服务端伤害计算只接受
+    # buildConfig 声明的主技能。先按 buildConfig 过滤技能再构造请求体，
+    # 否则止流、艾达等多技能角色会因技能数量不符触发 10000 参数错误。
+    filtered_detail, filter_err = await _resolve_damage_skills(dna_user, build)
+    if filter_err is not None:
+        return DNAApiResp[CharacterCalculateData].err(filter_err)
+    if filtered_detail is not build.role_detail:
+        build = dataclasses.replace(build, role_detail=filtered_detail)
+
     # 构造请求体阶段可能因角色数据不满足伤害计算前置条件而抛 ValueError
-    # （例如艾达有 4 个主技能，与固定 3 档加成表不匹配）。
+    # （例如技能等级扣除溯源加成后小于 1）。
     # 此处捕获并降级为失败响应，使伤害段显示错误提示，
     # 而非让异常冒泡导致整个角色面板命令崩溃。
     try:
