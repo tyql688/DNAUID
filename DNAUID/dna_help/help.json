@@ -64,6 +64,14 @@
         "need_admin": false
       },
       {
+        "name": "希尔妲凭据登录",
+        "desc": "粘贴希尔妲账号页复制的DNAUID凭据",
+        "eg": "dna登录<希尔妲复制的凭据>",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
         "name": "退出登录",
         "desc": "退出当前的皎皎角登录",
         "eg": "退出登录",

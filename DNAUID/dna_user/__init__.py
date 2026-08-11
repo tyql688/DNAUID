@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 
 from gsuid_core.sv import SV
@@ -5,7 +7,7 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
 from ..utils.utils import is_uid_hidden
-from .login_router import get_cookie, page_login, token_login
+from .login_router import get_cookie, page_login, token_login, hilda_credentials_login
 from ..utils.msgs.notify import (
     dna_login_fail,
     send_dna_notify,
@@ -30,7 +32,11 @@ sv_dna_logout = SV("dna退出登录")
     )
 )
 async def dna_login(bot: Bot, ev: Event):
-    text = re.sub(r'["\n\t ]+', "", ev.text.strip())
+    raw_text = ev.text.strip()
+    if raw_text.startswith("{"):
+        return await hilda_credentials_login(bot, ev, raw_text)
+
+    text = re.sub(r'["\n\t ]+', "", raw_text)
     text = text.replace("，", ",")
 
     if text == "":

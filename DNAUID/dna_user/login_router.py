@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 import async_timeout
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, ConfigDict, ValidationError
 from starlette.responses import HTMLResponse
 
 from gsuid_core.bot import Bot
@@ -66,6 +66,26 @@ class WebSmsCodeParams(BaseModel):
     v_json: str = Field(alias="vJson", description="CAPTCHA 验证结果")
 
 
+class HildaCredentials(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel: LoginChannel = Field(description="登录来源")
+    token: str = Field(min_length=1, description="登录 token")
+    dev_code: str = Field(alias="devCode", min_length=1, description="登录设备码")
+    d_num: str = Field(alias="dNum", description="设备编号")
+    refresh_token: str = Field(alias="refreshToken", description="刷新 token")
+    version: str = Field(min_length=1, description="希尔妲 APK 版本")
+
+    def to_login_credentials(self) -> LoginCredentials:
+        return LoginCredentials(
+            channel=self.channel,
+            token=self.token,
+            dev_code=self.dev_code,
+            d_num=self.d_num,
+            refresh_token=self.refresh_token,
+        )
+
+
 async def page_login(bot: Bot, ev: Event) -> None:
     transport_name = DNAConfig.get_config("DNALoginTransport").data.strip()
     if transport_name in {"", "local"}:
@@ -83,6 +103,18 @@ async def page_login(bot: Bot, ev: Event) -> None:
 async def token_login(bot: Bot, ev: Event, token: str) -> None:
     login_service = DNALoginService(bot, ev)
     login_result = await login_service.dna_login_by_token(token=token.strip())
+    await send_dna_notify(bot, ev, login_result)
+
+
+async def hilda_credentials_login(bot: Bot, ev: Event, payload: str) -> None:
+    try:
+        credentials = HildaCredentials.model_validate_json(payload).to_login_credentials()
+    except (ValidationError, ValueError):
+        await send_dna_notify(bot, ev, "希尔妲凭据格式无效")
+        return
+
+    login_service = DNALoginService(bot, ev)
+    login_result = await login_service.login_with_credentials(credentials)
     await send_dna_notify(bot, ev, login_result)
 
 
