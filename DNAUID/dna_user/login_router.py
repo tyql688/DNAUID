@@ -49,6 +49,8 @@ class LoginSubmission(BaseModel):
 class LoginSession(BaseModel):
     auth: str = Field(description="登录会话标识")
     user_id: str = Field(description="机器人用户标识")
+    app_dev_code: str | None = Field(default=None, description="App 设备码")
+    app_mobile: str | None = Field(default=None, description="App 已成功发码的手机号")
     web_dev_code: str | None = Field(default=None, description="Web 设备码")
     web_mobile: str | None = Field(default=None, description="已成功发码的手机号")
     submission: LoginSubmission | None = Field(default=None, description="待处理的登录提交")
@@ -58,6 +60,12 @@ class LoginSubmitParams(BaseModel):
     auth: str = Field(description="登录会话标识")
     mobile: str = Field(description="登录手机号")
     code: str = Field(description="短信验证码")
+
+
+class AppSmsCodeParams(BaseModel):
+    auth: str = Field(description="登录会话标识")
+    mobile: str = Field(description="接收验证码的手机号")
+    v_json: str = Field(alias="vJson", description="CAPTCHA 验证结果")
 
 
 class WebSmsCodeParams(BaseModel):
@@ -361,14 +369,17 @@ async def _submit_login(
     if not is_validate_code(data.code):
         return {"success": False, "msg": "无效手机号或验证码"}
 
-    dev_code: str | None = None
-    if channel is LoginChannel.WEB:
+    if channel is LoginChannel.APP:
+        dev_code = login_session.app_dev_code
+        sent_mobile = login_session.app_mobile
+    else:
         dev_code = login_session.web_dev_code
-        if dev_code is None or login_session.web_mobile != data.mobile:
-            return {
-                "success": False,
-                "msg": "请先为该手机号获取验证码",
-            }
+        sent_mobile = login_session.web_mobile
+    if dev_code is None or sent_mobile != data.mobile:
+        return {
+            "success": False,
+            "msg": "请先为该手机号获取验证码",
+        }
 
     submission = LoginSubmission(
         channel=channel,
@@ -391,6 +402,39 @@ async def dna_login(data: LoginSubmitParams) -> dict[str, bool | str]:
 @app.post("/dna/web/login")
 async def dna_web_login(data: LoginSubmitParams) -> dict[str, bool | str]:
     return await _submit_login(data, LoginChannel.WEB)
+
+
+@app.post("/dna/getSmsCode")
+async def dna_get_sms_code(
+    data: AppSmsCodeParams,
+) -> dict[str, bool | str]:
+    login_session = cache.get(data.auth)
+    if not isinstance(login_session, LoginSession):
+        return {"success": False, "msg": "登录超时"}
+    if not is_valid_chinese_phone_number(data.mobile):
+        return {"success": False, "msg": "无效手机号"}
+
+    dev_code = login_session.app_dev_code
+    if dev_code is None:
+        dev_code = create_device_code(LoginChannel.APP)
+        login_session = login_session.model_copy(update={"app_dev_code": dev_code})
+        cache.set(data.auth, login_session)
+
+    result = await dna_api.get_app_sms_code(
+        data.mobile,
+        data.v_json,
+        dev_code,
+    )
+    if result.is_success:
+        current_session = cache.get(data.auth)
+        if not isinstance(current_session, LoginSession):
+            return {"success": False, "msg": "登录超时"}
+        cache.set(
+            data.auth,
+            current_session.model_copy(update={"app_mobile": data.mobile}),
+        )
+        return {"success": True, "msg": "验证码已发送"}
+    return {"success": False, "msg": result.throw_msg()}
 
 
 @app.post("/dna/web/getSmsCode")

@@ -218,6 +218,32 @@ class DNAApi:
         rsa_pub = await self.get_rsa_public_key()
         return generate_headers_h5(headers, payload, rsa_pub)
 
+    async def get_app_sms_code(
+        self,
+        mobile: str | int,
+        v_json: str,
+        dev_code: str,
+    ) -> DNAApiResp[Any]:
+        headers = await get_base_header(dev_code=dev_code)
+        payload = {
+            "isCaptcha": 1,
+            "mobile": mobile,
+            "vJson": v_json,
+        }
+        rsa_pub = await self.get_rsa_public_key()
+        signed_headers, signed_payload = get_signed_headers_and_body(
+            url=GET_SMS_CODE_URL,
+            header=headers,
+            data=payload,
+            rsa_public_key=rsa_pub,
+        )
+        return await self._dna_request(
+            GET_SMS_CODE_URL,
+            "POST",
+            signed_headers,
+            data=signed_payload,
+        )
+
     async def get_web_sms_code(
         self,
         mobile: str | int,

@@ -9,9 +9,7 @@
       href="https://herobox-img.yingxiong.com/h5/img/logo_1.png"
       type="image/x-icon"
     />
-    {% if login_mode == 'web' %}
     <script src="https://dnabbs.yingxiong.com/lib/ct4.js"></script>
-    {% endif %}
     <style>
       :root {
         color-scheme: light;
@@ -541,7 +539,7 @@
             <div class="dnabbs-text">在浏览器完成验证并获取验证码</div>
             {% else %}
             <div class="welcome-text">登录皎皎角账号</div>
-            <div class="dnabbs-text">验证码需要在官方 App 中获取</div>
+            <div class="dnabbs-text">使用 Android 验证流程获取验证码</div>
             {% endif %}
           </div>
         </div>
@@ -559,43 +557,13 @@
             <a href="{{ app_login_url }}">改用 App 登录</a>
           </div>
           {% else %}
-          <div class="guide-kicker">验证码获取</div>
-          <div class="guide-title">请在皎皎角获取验证码</div>
+          <div class="guide-kicker">App 登录</div>
+          <div class="guide-title">直接在当前页面完成登录</div>
           <ol class="guide-steps">
-            <li>点击对应系统的打开按钮</li>
-            <li>在皎皎角登录页获取验证码</li>
-            <li>返回本页完成登录</li>
+            <li>填写皎皎角绑定的手机号</li>
+            <li>完成 Android 安全验证并获取验证码</li>
+            <li>输入短信中的四位验证码</li>
           </ol>
-          <div class="app-links">
-            <a
-              class="app-link"
-              id="androidOpenAppLink"
-              href="jjjiaoherobox://jjjiaoherobox"
-              aria-label="打开 Android 皎皎角 App"
-            >
-              <span class="platform-name">Android</span>
-              <span class="app-action">打开 →</span>
-            </a>
-            <a
-              class="app-link"
-              id="iosOpenAppLink"
-              href="https://dnabbs.yingxiong.com/openbox/"
-              aria-label="打开 iOS 皎皎角 App"
-            >
-              <span class="platform-name">iOS</span>
-              <span class="app-action">打开 →</span>
-            </a>
-          </div>
-          <div class="download-links">
-            <span>未安装 App？</span>
-            <a
-              id="officialDownloadLink"
-              href="https://dna.yingxiong.com/p/hzDown.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              >前往官方下载</a
-            >
-          </div>
           {% endif %}
         </div>
       </section>
@@ -621,7 +589,7 @@
           {% else %}
           <div class="form-eyebrow">手机验证码登录</div>
           <h1>绑定 DNAUID</h1>
-          <p>填写与皎皎角一致的手机号，以及 App 收到的四位验证码。</p>
+          <p>完成 Android 安全验证后获取短信验证码，并绑定 App 凭据。</p>
           {% endif %}
         </div>
         <form id="loginForm">
@@ -640,24 +608,20 @@
           </div>
           <div class="input-group">
             <label for="verificationCode">验证码</label>
-            {% if login_mode == 'web' %}
             <div class="verification-group">
-            {% endif %}
-            <input
-              type="text"
-              id="verificationCode"
-              name="verificationCode"
-              required
-              pattern="[0-9]{4}"
-              maxlength="4"
-              autocomplete="one-time-code"
-              inputmode="numeric"
-              placeholder="请输入四位验证码"
-            />
-            {% if login_mode == 'web' %}
+              <input
+                type="text"
+                id="verificationCode"
+                name="verificationCode"
+                required
+                pattern="[0-9]{4}"
+                maxlength="4"
+                autocomplete="one-time-code"
+                inputmode="numeric"
+                placeholder="请输入四位验证码"
+              />
               <button type="button" id="getCodeBtn" disabled>获取验证码</button>
             </div>
-            {% endif %}
           </div>
           <div id="userIdDisplay" class="user-id-display">当前识别码: {{ userId }}</div>
           <button type="submit" id="loginBtn" disabled>登录</button>
@@ -672,10 +636,8 @@
       const loginForm = document.getElementById('loginForm')
       const toastContainer = document.getElementById('toastContainer')
       let isSubmitting = false
-      {% if login_mode == 'web' %}
       const getCodeBtn = document.getElementById('getCodeBtn')
       let isCodeCooldown = false
-      {% endif %}
 
       // 通用 Toast 提示函数
       function showToast(message, type = 'info', duration = 3000) {
@@ -703,9 +665,7 @@
         const isPhoneValid = /^1[3-9]\d{9}$/.test(phoneInput.value)
         const isCodeValid = /^\d{4}$/.test(verificationCodeInput.value)
         loginBtn.disabled = isSubmitting || !isPhoneValid || !isCodeValid
-        {% if login_mode == 'web' %}
         getCodeBtn.disabled = isCodeCooldown || !isPhoneValid
-        {% endif %}
       }
 
       phoneInput.addEventListener('input', updateLoginButton)
@@ -713,6 +673,11 @@
 
       {% if login_mode == 'web' %}
       const captchaId = 'b4b05ab6ca764ef4242e87cba47df9c8'
+      const smsCodeUrl = '{{ server_url }}/dna/web/getSmsCode'
+      {% else %}
+      const captchaId = '114d4e96cc4536050c7efaeb7e4f3c8c'
+      const smsCodeUrl = '{{ server_url }}/dna/getSmsCode'
+      {% endif %}
 
       function startCodeCooldown() {
         isCodeCooldown = true
@@ -733,10 +698,10 @@
         }, 1000)
       }
 
-      async function requestWebSmsCode(validation) {
+      async function requestSmsCode(validation) {
         validation.captcha_id = captchaId
         try {
-          const response = await fetch('{{ server_url }}/dna/web/getSmsCode', {
+          const response = await fetch(smsCodeUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -771,6 +736,9 @@
           captchaId: captchaId,
           https: true,
           product: 'bind',
+          {% if login_mode == 'app' %}
+          clientType: 'android',
+          {% endif %}
         },
         function (captcha) {
           captcha
@@ -782,7 +750,7 @@
                 showToast('请完成验证', 'warning')
                 return
               }
-              requestWebSmsCode(validation)
+              requestSmsCode(validation)
             })
             .onFail(function () {
               showToast('验证未通过，请重试', 'warning')
@@ -807,7 +775,6 @@
           })
         },
       )
-      {% endif %}
 
       loginForm.addEventListener('submit', async function (e) {
         e.preventDefault()
