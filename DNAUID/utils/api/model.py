@@ -114,7 +114,7 @@ class DNARoleShortNoteRes(BaseModel):
 
 
 class WeaponInsForTool(BaseModel):
-    elementIcon: str = Field(description="武器类型图标")
+    elementIcon: Optional[str] = Field(description="武器类型图标", default=None)
     icon: str = Field(description="武器图标")
     level: int = Field(description="武器等级")
     name: str = Field(description="武器名称")

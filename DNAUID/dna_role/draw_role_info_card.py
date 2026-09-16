@@ -60,7 +60,7 @@ class ItemTemp(BaseModel):
     id: int
     name: str
     level: int
-    element_icon: str
+    element_icon: Optional[str] = None
     icon: str
     grade_level: Optional[int] = None
     unlocked: bool = False
@@ -240,7 +240,9 @@ async def draw_role_info_card(bot: Bot, ev: Event):
     await bot.send(card)
 
 
-async def _draw_item(card: Image.Image, start_y: int, items: List[ItemTemp], item_bg: Image.Image, show_none: bool):
+async def _draw_item(
+    card: Image.Image, start_y: int, items: List[ItemTemp], item_bg: Image.Image, show_none: bool
+) -> int:
     items = items if show_none else [i for i in items if i.unlocked]
     for index, item in enumerate(items):
         temp_bg = Image.new("RGBA", (210, 300))
@@ -268,14 +270,15 @@ async def _draw_item(card: Image.Image, start_y: int, items: List[ItemTemp], ite
         else:
             fg_draw.text((128, 215), "未解锁", COLOR_WHITE, dna_font_20, "mm")
         # element
-        if item.type == "role":
-            attr_img = await get_attr_img(pic_url=item.element_icon)
-            attr_img = attr_img.resize((attr_img.width // 2, attr_img.height // 2))
-            fg.alpha_composite(attr_img, (0, 20))
-        else:
-            attr_img = await get_weapon_attr_img(pic_url=item.element_icon)
-            attr_img = attr_img.resize((attr_img.width // 2, attr_img.height // 2))
-            fg.alpha_composite(attr_img, (-3, 23))
+        if item.element_icon:
+            if item.type == "role":
+                attr_img = await get_attr_img(pic_url=item.element_icon)
+                attr_img = attr_img.resize((attr_img.width // 2, attr_img.height // 2))
+                fg.alpha_composite(attr_img, (0, 20))
+            else:
+                attr_img = await get_weapon_attr_img(pic_url=item.element_icon)
+                attr_img = attr_img.resize((attr_img.width // 2, attr_img.height // 2))
+                fg.alpha_composite(attr_img, (-3, 23))
 
         # 画命座
         if item.grade_level is not None:
