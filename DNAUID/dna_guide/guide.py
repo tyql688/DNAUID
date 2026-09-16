@@ -13,7 +13,7 @@ from ..dna_config.dna_config import DNAConfig
 GUIDE_PATH = Path(__file__).parent / "texture2d"
 
 
-async def get_guide(bot: Bot, ev: Event, char_name: str):
+async def get_guide(bot: Bot, ev: Event, char_name: str) -> None:
     real_char_name = alias_to_char_name(char_name)
     if not real_char_name:
         await dna_not_found(bot, ev, f"角色别名【{char_name}】")
@@ -21,12 +21,13 @@ async def get_guide(bot: Bot, ev: Event, char_name: str):
 
     char_name = real_char_name
 
-    logger.debug(f"[二重螺旋] 开始获取{char_name}图鉴")
+    logger.debug(f"[二重螺旋] 开始获取{char_name}攻略")
 
     config = DNAConfig.get_config("Guide").data
 
-    imgs_result = []
-    pattern = re.compile(re.escape(char_name), re.IGNORECASE)
+    imgs_result: list[str] = []
+    guide_name = "暗主" if char_name in {"男主-暗", "女主-暗"} else char_name
+    pattern = re.compile(re.escape(guide_name), re.IGNORECASE)
     if "all" in config:
         for guide_path in GUIDE_PATH.iterdir():
             imgs = await get_guide_pic(
