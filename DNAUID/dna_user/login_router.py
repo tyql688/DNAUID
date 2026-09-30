@@ -15,14 +15,15 @@ from gsuid_core.segment import MessageSegment
 from gsuid_core.web_app import app
 from gsuid_core.utils.cookie_manager.qrlogin import get_qrcode_base64
 
-from ..utils import TimedCache, dna_api, get_public_ip
 from .transport import TransportError, build_transport
 from .login_helps import (
     get_token,
     is_validate_code,
     is_valid_chinese_phone_number,
 )
+from ..utils.utils import TimedCache, get_public_ip
 from .login_service import DNALoginService
+from ..utils.dna_api import dna_api
 from ..utils.api.auth import (
     LoginChannel,
     LoginCredentials,
@@ -274,7 +275,7 @@ async def page_login_local(bot: Bot, ev: Event, url: str) -> None:
                     )
                     return
                 await asyncio.sleep(3)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         cache.delete(login_auth)
         await dna_login_timeout(bot, ev)
     except TypeError as error:

@@ -73,7 +73,7 @@ async def dna_auto_sign():
             await sub.send(msg)
 
 
-@sv_dna_sign_all.on_fullmatch(("全部签到"))
+@sv_dna_sign_all.on_fullmatch("全部签到")
 async def dna_sign_recheck_all(bot: Bot, ev: Event):
     await bot.send("[DNAUID] [全部签到] 已开始执行!")
     msg = await auto_sign()
@@ -81,7 +81,7 @@ async def dna_sign_recheck_all(bot: Bot, ev: Event):
     await bot.send(msg)
 
 
-@sv_dna_sign_all.on_regex(("^(订阅|取消订阅)签到结果$"))
+@sv_dna_sign_all.on_regex("^(订阅|取消订阅)签到结果$")
 async def dna_sign_result(bot: Bot, ev: Event):
     if "取消" in ev.raw_text:
         option = "关闭"

@@ -1,9 +1,9 @@
 import json
 import random
-from typing import List, Final
+from typing import Final
 from pathlib import Path
 
-DEFAULT_TEMPLATES: Final[List[str]] = [
+DEFAULT_TEMPLATES: Final[list[str]] = [
     "互评",
     "支持楼主",
     "说得很有道理",
@@ -13,7 +13,7 @@ DEFAULT_TEMPLATES: Final[List[str]] = [
 _TEMPLATE_FILE: Final[Path] = Path(__file__).with_name("reply-templates.json")
 
 
-def _load_templates(path: Path = _TEMPLATE_FILE) -> List[str]:
+def _load_templates(path: Path = _TEMPLATE_FILE) -> list[str]:
     try:
         with path.open("r", encoding="utf-8") as f:
             return json.load(f).get("replies") or DEFAULT_TEMPLATES
@@ -21,7 +21,7 @@ def _load_templates(path: Path = _TEMPLATE_FILE) -> List[str]:
         return DEFAULT_TEMPLATES
 
 
-_REPLY_TEMPLATES: Final[List[str]] = _load_templates()
+_REPLY_TEMPLATES: Final[list[str]] = _load_templates()
 
 
 def get_random_reply() -> str:

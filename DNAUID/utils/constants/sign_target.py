@@ -1,5 +1,3 @@
-from typing import List
-
 from ..database.models import DNASign
 
 
@@ -22,7 +20,7 @@ class SignTarget:
     def bbs_sign_complete(
         cls,
         dna_sign: "DNASign",
-        check_config: List[str],
+        check_config: list[str],
     ) -> bool:
         from .sign_bbs_mark import BBSMarkName
 

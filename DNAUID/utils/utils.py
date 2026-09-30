@@ -2,7 +2,6 @@ import re
 import time
 import asyncio
 import functools
-from typing import Optional
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from collections import OrderedDict
@@ -44,7 +43,7 @@ class TimedCache:
     def _clean_up(self):
         current_time = time.time()
         keys_to_delete = []
-        for key, (value, expiry_time) in self.cache.items():
+        for key, (_, expiry_time) in self.cache.items():
             if expiry_time <= current_time:
                 keys_to_delete.append(key)
         for key in keys_to_delete:
@@ -145,23 +144,11 @@ def get_two_days_ago_date():
     return two_days_ago.strftime("%Y-%m-%d")
 
 
-def has_valid_at(ev: Event) -> bool:
-    """检查是否存在有效的 @ 目标
-
-    过滤无效的 at 数据（如 QQ 官方平台传入平台名称而非用户 ID）
-
-    Args:
-        ev: 事件对象
-
-    Returns:
-        bool: True 表示存在有效的 @ 目标
-    """
-    if not ev.at:
-        return False
-    # 过滤无效的 at 数据（如 QQ 官方平台传入平台名称而非用户 ID）
-    if ev.at == ev.bot_id or ev.at == ev.real_bot_id:
-        return False
-    return True
+def valid_at_target(ev: Event) -> str | None:
+    """有效的 @ 目标用户 ID；QQ 官方平台会把平台名称塞进 at，需过滤"""
+    if not ev.at or ev.at in (ev.bot_id, ev.real_bot_id):
+        return None
+    return ev.at
 
 
 async def get_using_id(ev: Event) -> str:
@@ -180,12 +167,9 @@ async def get_using_id(ev: Event) -> str:
     from ..dna_config.dna_config import DNAConfig
     from ..utils.database.models import DNAPrivacy, DNAGroupPrivacy
 
-    # 无有效的 @ 目标
-    if not has_valid_at(ev):
-        return ev.user_id
-
-    # 用户AT自己，查询自己的数据，不受偷窥权限限制
-    if ev.at == ev.user_id:
+    target = valid_at_target(ev)
+    # 无有效 @ 目标，或 @ 自己：查询自己，不受偷窥权限限制
+    if target is None or target == ev.user_id:
         return ev.user_id
 
     # 功能未开启
@@ -202,13 +186,13 @@ async def get_using_id(ev: Event) -> str:
                 # 强制全体防偷窥，不允许查询他人
                 return ev.user_id
             # 强制全体开偷窥，允许查询
-            return ev.at
+            return target
 
     # 检查被@用户的隐私设置
-    privacy = await DNAPrivacy.get_privacy_setting(ev.at, ev.bot_id)
+    privacy = await DNAPrivacy.get_privacy_setting(target, ev.bot_id)
     if privacy and not privacy.allow_peek:
         return ev.user_id
-    return ev.at
+    return target
 
 
 def is_peek_blocked(ev: Event, user_id: str) -> bool:
@@ -226,17 +210,14 @@ def is_peek_blocked(ev: Event, user_id: str) -> bool:
     Returns:
         bool: True 表示被阻止，应该显示防偷窥提示
     """
-    # 没有有效的 @ 目标
-    if not has_valid_at(ev):
-        return False
-    # @ 的是自己
-    if ev.at == ev.user_id:
+    target = valid_at_target(ev)
+    if target is None or target == ev.user_id:
         return False
     # 返回的是自己的 ID，说明被阻止了
     return user_id == ev.user_id
 
 
-async def is_uid_hidden(user_id: str, bot_id: str, group_id: Optional[str] = None) -> bool:
+async def is_uid_hidden(user_id: str, bot_id: str, group_id: str | None = None) -> bool:
     """检查指定用户的 UID 是否应该被隐藏
 
     优先级：

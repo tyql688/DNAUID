@@ -1,5 +1,3 @@
-from typing import Dict
-
 from gsuid_core.utils.plugins_config.models import (
     GSC,
     GsIntConfig,
@@ -17,13 +15,13 @@ try:
         (0, 5),
     )
 except ImportError:
-    _sign_time_config = GsTimeConfig(  # type: ignore[assignment]
+    _sign_time_config = GsTimeConfig(
         "每晚签到时间设置",
         "每晚二重螺旋签到时间设置",
         "00:05",
     )
 
-CONFIG_SIGN: Dict[str, GSC] = {
+CONFIG_SIGN: dict[str, GSC] = {
     "DNASignin": GsBoolConfig(
         "二重螺旋游戏签到开关",
         "二重螺旋游戏签到开关",

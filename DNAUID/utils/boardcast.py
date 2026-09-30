@@ -4,7 +4,6 @@ import asyncio
 from gsuid_core.gss import gss
 from gsuid_core.logger import logger
 from gsuid_core.subscribe import gs_subscribe
-from gsuid_core.utils.database.models import Subscribe
 from gsuid_core.utils.boardcast.models import BoardCastMsgDict
 
 from ..utils.constants.boardcast import BoardcastType
@@ -12,18 +11,17 @@ from ..utils.constants.boardcast import BoardcastType
 title = "二重螺旋"
 
 
-async def send_board_cast_msg(msgs: BoardCastMsgDict, board_cast_type: BoardcastType):
+async def send_board_cast_msg(msgs: BoardCastMsgDict, board_cast_type: BoardcastType) -> None:
     logger.info(f"[「{title}」推送] {board_cast_type} 任务启动...")
     private_msg_list = msgs["private_msg_dict"]
     group_msg_list = msgs["group_msg_dict"]
 
     subs = await gs_subscribe.get_subscribe(board_cast_type)
 
-    def get_bot_self_id(qid, bot_id, target_type, group_id):
+    def get_bot_self_id(qid: str, bot_id: str, target_type: str, group_id: str) -> str:
         if not subs:
             return ""
         for sub in subs:
-            sub: Subscribe
             if sub.user_type != target_type:
                 continue
             if target_type == "direct":
@@ -55,31 +53,18 @@ async def send_board_cast_msg(msgs: BoardCastMsgDict, board_cast_type: Boardcast
     logger.info(f"[「{title}」推送] {board_cast_type} 私聊推送完成!")
 
     # 执行群聊推送
-    for gid in group_msg_list:
+    for gid, group in group_msg_list.items():
         try:
             for bot_id in gss.active_bot:
-                if isinstance(group_msg_list[gid], list):
-                    for group in group_msg_list[gid]:
-                        bot_self_id = get_bot_self_id("", group["bot_id"], "group", gid)  # type: ignore
-                        await gss.active_bot[bot_id].target_send(
-                            group["messages"],  # type: ignore
-                            "group",
-                            gid,
-                            group["bot_id"],  # type: ignore
-                            bot_self_id,
-                            "",
-                        )
-                        await asyncio.sleep(0.5 + random.randint(1, 3))
-                else:
-                    bot_self_id = get_bot_self_id("", group_msg_list[gid]["bot_id"], "group", gid)
-                    await gss.active_bot[bot_id].target_send(
-                        group_msg_list[gid]["messages"],
-                        "group",
-                        gid,
-                        group_msg_list[gid]["bot_id"],
-                        bot_self_id,
-                        "",
-                    )
+                bot_self_id = get_bot_self_id("", group["bot_id"], "group", gid)
+                await gss.active_bot[bot_id].target_send(
+                    group["messages"],
+                    "group",
+                    gid,
+                    group["bot_id"],
+                    bot_self_id,
+                    "",
+                )
         except Exception as e:
             logger.exception(f"[「{title}」推送] 群 {gid} 推送失败!错误信息", e)
         await asyncio.sleep(0.5 + random.randint(1, 3))

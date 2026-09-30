@@ -9,7 +9,6 @@ from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 from gsuid_core.utils.image.image_tools import tint_image, crop_center_img
 
-from ..utils import dna_api
 from ..utils.image import (
     COLOR_GREEN,
     COLOR_KHAKI,
@@ -19,6 +18,7 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from ..utils.dna_api import dna_api
 from ..utils.api.model import DNARoleForToolRes, DNARoleShortNoteRes
 from ..utils.msgs.notify import (
     dna_not_found,

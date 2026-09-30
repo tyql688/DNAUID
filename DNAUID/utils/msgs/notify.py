@@ -50,16 +50,16 @@ def _mask_uid_in_message(msg: str) -> str:
 
 
 async def dna_uid_invalid(bot: Bot, ev: Event, need_at: bool = True):
-    from ...dna_config.prefix import DNA_PREFIX
+    from ...dna_config.prefix import dna_prefix
 
     is_use_other_id = await get_using_id(ev) != ev.user_id
     msg = (
         [
             "UID无效，请重新绑定",
-            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+            f"请重新输入命令【{dna_prefix()}绑定 UID】进行绑定",
         ]
         if not is_use_other_id
-        else ["该用户的 UID 无效", f"请让该用户输入命令【{DNA_PREFIX}绑定 UID】进行绑定"]
+        else ["该用户的 UID 无效", f"请让该用户输入命令【{dna_prefix()}绑定 UID】进行绑定"]
     )
     msg = "\n".join(msg)
     return await send_dna_notify(bot, ev, msg, need_at)
@@ -92,11 +92,11 @@ async def dna_not_unlocked(bot: Bot, ev: Event, resource_name: str, need_at: boo
 
 
 async def dna_login_fail(bot: Bot, ev: Event, need_at: bool = True):
-    from ...dna_config.prefix import DNA_PREFIX
+    from ...dna_config.prefix import dna_prefix
 
     msg = [
         "账号登录失败",
-        f"请重新输入命令【{DNA_PREFIX}登录】进行登录",
+        f"请重新输入命令【{dna_prefix()}登录】进行登录",
     ]
     msg = "\n".join(msg)
     return await send_dna_notify(bot, ev, msg, need_at)
@@ -111,26 +111,18 @@ async def dna_login_timeout(bot: Bot, ev: Event, need_at: bool = True):
 
 
 async def dna_code_login_fail(bot: Bot, ev: Event, need_at: bool = True):
-    from ...dna_config.prefix import DNA_PREFIX
+    from ...dna_config.prefix import dna_prefix
 
     msg = [
         "手机号+验证码登录失败",
-        f"请重新输入命令【{DNA_PREFIX}登录 手机号,验证码】进行登录",
-    ]
-    msg = "\n".join(msg)
-    return await send_dna_notify(bot, ev, msg, need_at)
-
-
-async def dna_login_success(bot: Bot, ev: Event, need_at: bool = True):
-    msg = [
-        "登录成功",
+        f"请重新输入命令【{dna_prefix()}登录 手机号,验证码】进行登录",
     ]
     msg = "\n".join(msg)
     return await send_dna_notify(bot, ev, msg, need_at)
 
 
 async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0, need_at: bool = True):
-    from ...dna_config.prefix import DNA_PREFIX
+    from ...dna_config.prefix import dna_prefix
 
     code_map = {
         4: [
@@ -147,19 +139,19 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
         ],
         0: [
             "UID绑定成功！",
-            f"当前仅支持查询部分信息，完整功能请使用【{DNA_PREFIX}登录】",
+            f"当前仅支持查询部分信息，完整功能请使用【{dna_prefix()}登录】",
         ],
         -1: [
             "UID的位数不正确！",
-            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+            f"请重新输入命令【{dna_prefix()}绑定 UID】进行绑定",
         ],
         -2: [
             "该UID已经绑定过了！",
-            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+            f"请重新输入命令【{dna_prefix()}绑定 UID】进行绑定",
         ],
         -3: [
             "你输入了错误的格式!",
-            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+            f"请重新输入命令【{dna_prefix()}绑定 UID】进行绑定",
         ],
         -4: [
             "绑定UID达到上限!",
@@ -170,11 +162,11 @@ async def dna_bind_uid_result(bot: Bot, ev: Event, uid: str = "", code: int = 0,
         -6: [
             "删除失败！",
             "该命令末尾需要跟正确的UID!",
-            "例如【{DNA_PREFIX}删除123456】",
+            f"例如【{dna_prefix()}删除123456】",
         ],
         -99: [
             "绑定失败",
-            f"请重新输入命令【{DNA_PREFIX}绑定 UID】进行绑定",
+            f"请重新输入命令【{dna_prefix()}绑定 UID】进行绑定",
         ],
     }
     if code not in code_map:

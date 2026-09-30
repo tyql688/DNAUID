@@ -1,11 +1,11 @@
 import random
 import asyncio
-from typing import Any, Dict, List, Tuple, Union, Optional
+from typing import Any
 
 from gsuid_core.logger import logger
 
-from ..utils import dna_api
 from .reply_temps import get_random_reply
+from ..utils.dna_api import dna_api
 from ..utils.api.model import DNABBSTask, DNATaskProcessRes, DNACalendarSignRes
 from ..utils.database.models import DNASign, DNAUser
 from ..utils.constants.sign_target import SignTarget
@@ -78,12 +78,12 @@ class SignService:
     def __init__(
         self,
         dna_user: DNAUser,
-        delay: Tuple[int, int] = (0, 1),
+        delay: tuple[int, int] = (0, 1),
     ):
         self.dna_user = dna_user
         self.uid = dna_user.uid
-        self.msg_temp: Dict[str, Union[bool, str]] = {}
-        self.bbs_states: Dict[str, Union[bool, str]] = {
+        self.msg_temp: dict[str, bool | str] = {}
+        self.bbs_states: dict[str, bool | str] = {
             BBSMarkName.BBS_SIGN: False,
             BBSMarkName.BBS_DETAIL: False,
             BBSMarkName.BBS_LIKE: False,
@@ -91,7 +91,7 @@ class SignService:
             BBSMarkName.BBS_REPLY: False,
         }
         self.error_msg: str = ""
-        self.delay: Tuple[int, int] = delay
+        self.delay: tuple[int, int] = delay
         self._init_status()
 
     def _init_status(self):
@@ -170,7 +170,7 @@ class SignService:
         如果签到已完成（包括 True, "skip", "forbidden", "failed"），则返回 True
         如果签到未完成，则返回 False
         """
-        dna_sign: Optional[DNASign] = await DNASign.get_sign_data(self.uid)
+        dna_sign: DNASign | None = await DNASign.get_sign_data(self.uid)
         if not dna_sign:
             self.dna_sign = DNASign.build(self.uid)
             return False
@@ -301,7 +301,7 @@ class SignService:
 
         await asyncio.sleep(random.uniform(self.delay[0], self.delay[1]))
 
-    async def _bbs_detail(self, dna_bbs_task: DNABBSTask, posts: List[Dict[str, Any]]):
+    async def _bbs_detail(self, dna_bbs_task: DNABBSTask, posts: list[dict[str, Any]]):
         if self.dna_sign.bbs_detail >= SignTarget.BBS_DETAIL:
             self.bbs_states[BBSMarkName.BBS_DETAIL] = "skip"
             return
@@ -333,7 +333,7 @@ class SignService:
 
         self.bbs_states[BBSMarkName.BBS_DETAIL] = self.dna_sign.bbs_detail >= dna_bbs_task.times
 
-    async def _bbs_like(self, dna_bbs_task: DNABBSTask, posts: List[Dict[str, Any]]):
+    async def _bbs_like(self, dna_bbs_task: DNABBSTask, posts: list[dict[str, Any]]):
         if self.dna_sign.bbs_like >= SignTarget.BBS_LIKE:
             self.bbs_states[BBSMarkName.BBS_LIKE] = "skip"
             return
@@ -365,7 +365,7 @@ class SignService:
 
         self.bbs_states[BBSMarkName.BBS_LIKE] = self.dna_sign.bbs_like >= dna_bbs_task.times
 
-    async def _bbs_share(self, dna_bbs_task: DNABBSTask, posts: List[Dict[str, Any]]):
+    async def _bbs_share(self, dna_bbs_task: DNABBSTask, posts: list[dict[str, Any]]):
         if self.dna_sign.bbs_share >= SignTarget.BBS_SHARE:
             self.bbs_states[BBSMarkName.BBS_SHARE] = "skip"
             return
@@ -376,7 +376,7 @@ class SignService:
 
         self.bbs_states[BBSMarkName.BBS_SHARE] = self.dna_sign.bbs_share >= SignTarget.BBS_SHARE
 
-    async def _bbs_reply(self, dna_bbs_task: DNABBSTask, posts: List[Dict[str, Any]]):
+    async def _bbs_reply(self, dna_bbs_task: DNABBSTask, posts: list[dict[str, Any]]):
         if self.dna_sign.bbs_reply >= SignTarget.BBS_REPLY:
             self.bbs_states[BBSMarkName.BBS_REPLY] = "skip"
             return

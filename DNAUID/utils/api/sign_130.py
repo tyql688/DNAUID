@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Tuple, Optional
+from typing import Any
 
 from .sign_utils import rand_str, xor_encode, rsa_encrypt, sign_shuffled, rand_digit_str
 
@@ -12,7 +12,7 @@ def _swap(text: str, i: int, j: int) -> str:
     return "".join(chars)
 
 
-def _build_sa_header(raw_sa: str, timestamp: Optional[int] = None) -> str:
+def _build_sa_header(raw_sa: str, timestamp: int | None = None) -> str:
     """
     1.3.0 sa header 构建 (libalgorithmlib.so cppCoreAlgorithm 的 Python 等价):
     1. 对 raw_sa(30 位纯数字随机串) 做 4 次位置交换: (1,17)(9,20)(15,16)(22,27)
@@ -45,10 +45,10 @@ def _build_sa_header(raw_sa: str, timestamp: Optional[int] = None) -> str:
 
 
 def generate_headers_130(
-    headers: Dict[str, str],
-    payload: Dict[str, Any],
+    headers: dict[str, str],
+    payload: dict[str, Any],
     rsa_public_key: str,
-) -> Tuple[Dict[str, str], Dict[str, Any]]:
+) -> tuple[dict[str, str], dict[str, Any]]:
     """为 1.3.0 版本生成签名 headers (tn + sa，无 rk)"""
     rk: str = rand_str(16)
     raw_sa = rand_digit_str(30)

@@ -1,3 +1,5 @@
+import asyncio
+
 from gsuid_core.sv import SV
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
@@ -38,7 +40,7 @@ async def handle_add_alias(bot: Bot, ev: Event):
         msg = await action_char_alias(action, name, new_alias)
 
     if "成功" in msg:
-        load_alias_data()
+        await asyncio.to_thread(load_alias_data)
     await bot.send(msg)
 
 

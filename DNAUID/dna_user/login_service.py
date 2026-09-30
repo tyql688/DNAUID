@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
-from ..utils import dna_api
 from ..utils.utils import mask_uid_in_text
+from ..utils.dna_api import dna_api
 from ..utils.api.auth import (
     LoginChannel,
     LoginCredentials,

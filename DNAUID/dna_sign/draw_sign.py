@@ -7,7 +7,6 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
-from ..utils import dna_api
 from ..utils.image import (
     COLOR_GRAY,
     COLOR_GREEN,
@@ -22,6 +21,7 @@ from ..utils.image import (
     download_pic_from_url,
 )
 from ..utils.utils import is_uid_hidden
+from ..utils.dna_api import dna_api
 from ..utils.api.model import (
     RoleShowForTool,
     DNARoleForToolRes,
@@ -87,9 +87,7 @@ async def _draw_sign_calendar(
     card.alpha_composite(avatar_title, (0, start_y))
     start_y += title_h
 
-    # bar
-    # 皎皎积分，社区累计签到，游戏累计签到，总活跃天数
-    # 成就展示
+    # 成就栏：皎皎积分，社区累计签到，游戏累计签到，总活跃天数
     achievement_info = [
         ("皎皎积分", str(user_gold_num)),
         ("社区累计签到", str(bbs_total_sign_in_day)),

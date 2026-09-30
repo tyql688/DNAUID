@@ -1,5 +1,6 @@
 import asyncio
-from typing import Dict, List, Literal
+from typing import Literal
+from dataclasses import field, dataclass
 
 from PIL import Image, ImageDraw
 
@@ -9,7 +10,6 @@ from gsuid_core.models import Event
 from gsuid_core.segment import MessageSegment
 from gsuid_core.utils.boardcast.models import BoardCastMsg, BoardCastMsgDict
 
-from ..utils import dna_api
 from .sign_service import (
     SignService,
     can_sign,
@@ -19,6 +19,7 @@ from .sign_service import (
     get_sign_interval,
     sign_concurrent_num,
 )
+from ..utils.dna_api import dna_api
 from ..utils.boardcast import send_board_cast_msg
 from ..utils.msgs.notify import send_dna_notify
 from ..dna_config.dna_config import DNASignConfig
@@ -27,16 +28,19 @@ from ..utils.fonts.dna_fonts import dna_font_24
 from ..utils.constants.boardcast import BoardcastTypeEnum
 
 
-async def sign_task(
-    dna_user: DNAUser,
-    is_manual: bool = True,
-    private_msgs: Dict = {},
-    group_msgs: Dict = {},
-    all_msgs: Dict = {},
-    private_bbs_msgs: Dict = {},
-    group_bbs_msgs: Dict = {},
-    all_bbs_msgs: Dict = {},
-):
+@dataclass(slots=True)
+class _AutoSignMsgs:
+    """自动签到时各账号结果的汇总桶，签到完再统一转成推送消息"""
+
+    private_sign: dict = field(default_factory=dict)
+    group_sign: dict = field(default_factory=dict)
+    all_sign: dict = field(default_factory=lambda: {"failed": 0, "success": 0})
+    private_bbs: dict = field(default_factory=dict)
+    group_bbs: dict = field(default_factory=dict)
+    all_bbs: dict = field(default_factory=lambda: {"failed": 0, "success": 0})
+
+
+async def sign_task(dna_user: DNAUser, auto_msgs: _AutoSignMsgs | None = None):
     expire_uids = []
     result_msgs = []
 
@@ -65,7 +69,7 @@ async def sign_task(
 
     await ss.save_sign_data()
 
-    if not is_manual:
+    if auto_msgs is not None:
         sign = ss.get_auto_sign_msg(False)
         await msg_sign(
             sign,
@@ -73,9 +77,9 @@ async def sign_task(
             dna_user.uid,
             dna_user.sign_switch,
             dna_user.user_id,
-            private_msgs,
-            group_msgs,
-            all_msgs,
+            auto_msgs.private_sign,
+            auto_msgs.group_sign,
+            auto_msgs.all_sign,
         )
 
         bbs_sign = ss.get_auto_sign_msg(True)
@@ -85,9 +89,9 @@ async def sign_task(
             dna_user.uid,
             dna_user.sign_switch,
             dna_user.user_id,
-            private_bbs_msgs,
-            group_bbs_msgs,
-            all_bbs_msgs,
+            auto_msgs.private_bbs,
+            auto_msgs.group_bbs,
+            auto_msgs.all_bbs,
         )
 
     return return_msg()
@@ -97,13 +101,13 @@ async def manual_sign(bot: Bot, ev: Event):
     if not can_sign() and not can_bbs_sign():
         return await send_dna_notify(bot, ev, "签到功能未开启")
 
-    dna_users: List[DNAUser] = await DNAUser.select_dna_users(ev.user_id, ev.bot_id)
+    dna_users: list[DNAUser] = await DNAUser.select_dna_users(ev.user_id, ev.bot_id)
     if not dna_users:
         return await send_dna_notify(bot, ev, "请检查登录有效性")
 
     result_msgs = []
     for dna_user in dna_users:
-        _result_msgs = await sign_task(dna_user) or []
+        _result_msgs = await sign_task(dna_user)
         result_msgs.extend(_result_msgs)
 
     if result_msgs:
@@ -115,7 +119,7 @@ async def auto_sign():
         return "[二重螺旋]自动任务\n签到功能未开启"
     if not can_sign() and not can_bbs_sign():
         return "[二重螺旋]自动任务\n签到功能未开启"
-    dna_users: List[DNAUser] = await DNAUser.get_dna_all_user()
+    dna_users: list[DNAUser] = await DNAUser.get_dna_all_user()
     if not dna_users:
         return "[二重螺旋]自动任务\n没有需要签到的用户"
 
@@ -129,51 +133,15 @@ async def auto_sign():
                 continue
             need_sign_users.append(dna_user)
 
-    async def process_user(
-        semaphore,
-        user: DNAUser,
-        private_sign_msgs: Dict,
-        group_sign_msgs: Dict,
-        all_sign_msgs: Dict,
-        private_bbs_msgs: Dict,
-        group_bbs_msgs: Dict,
-        all_bbs_msgs: Dict,
-    ):
-        async with semaphore:
-            return await sign_task(
-                user,
-                False,
-                private_sign_msgs,
-                group_sign_msgs,
-                all_sign_msgs,
-                private_bbs_msgs,
-                group_bbs_msgs,
-                all_bbs_msgs,
-            )
-
-    private_sign_msgs = {}
-    group_sign_msgs = {}
-    all_sign_msgs = {"failed": 0, "success": 0}
-
-    private_bbs_msgs = {}
-    group_bbs_msgs = {}
-    all_bbs_msgs = {"failed": 0, "success": 0}
-
+    auto_msgs = _AutoSignMsgs()
     max_concurrent: int = sign_concurrent_num()
     semaphore = asyncio.Semaphore(max_concurrent)
-    tasks = [
-        process_user(
-            semaphore,
-            user,
-            private_sign_msgs,
-            group_sign_msgs,
-            all_sign_msgs,
-            private_bbs_msgs,
-            group_bbs_msgs,
-            all_bbs_msgs,
-        )
-        for user in need_sign_users
-    ]
+
+    async def process_user(user: DNAUser):
+        async with semaphore:
+            return await sign_task(user, auto_msgs)
+
+    tasks = [process_user(user) for user in need_sign_users]
     for i in range(0, len(tasks), max_concurrent):
         batch = tasks[i : i + max_concurrent]
         results = await asyncio.gather(*batch, return_exceptions=True)
@@ -185,21 +153,24 @@ async def auto_sign():
         logger.info(f"[DNAUID] [自动签到] 等待{delay:.2f}秒进行下一次签到")
         await asyncio.sleep(delay)
 
-    sign_result = await to_board_cast_msg(private_sign_msgs, group_sign_msgs, "游戏签到", theme="blue")
+    sign_result = await to_board_cast_msg(auto_msgs.private_sign, auto_msgs.group_sign, "游戏签到", theme="blue")
     if not DNASignConfig.get_config("PrivateSignReport").data:
         sign_result["private_msg_dict"] = {}
     if not DNASignConfig.get_config("GroupSignReport").data:
         sign_result["group_msg_dict"] = {}
     await send_board_cast_msg(sign_result, BoardcastTypeEnum.SIGN_DNA)
 
-    bbs_result = await to_board_cast_msg(private_bbs_msgs, group_bbs_msgs, "社区签到", theme="yellow")
+    bbs_result = await to_board_cast_msg(auto_msgs.private_bbs, auto_msgs.group_bbs, "社区签到", theme="yellow")
     if not DNASignConfig.get_config("PrivateSignReport").data:
         bbs_result["private_msg_dict"] = {}
     if not DNASignConfig.get_config("GroupSignReport").data:
         bbs_result["group_msg_dict"] = {}
     await send_board_cast_msg(bbs_result, BoardcastTypeEnum.SIGN_DNA)
 
-    return f"[二重螺旋]自动任务\n今日成功游戏签到 {all_sign_msgs['success']} 个账号\n今日社区签到 {all_bbs_msgs['success']} 个账号"
+    return (
+        f"[二重螺旋]自动任务\n今日成功游戏签到 {auto_msgs.all_sign['success']} 个账号"
+        f"\n今日社区签到 {auto_msgs.all_bbs['success']} 个账号"
+    )
 
 
 async def to_board_cast_msg(
@@ -209,8 +180,8 @@ async def to_board_cast_msg(
     theme: str = "yellow",
 ):
     # 转为广播消息
-    private_msg_dict: Dict[str, List[BoardCastMsg]] = {}
-    group_msg_dict: Dict[str, BoardCastMsg] = {}
+    private_msg_dict: dict[str, list[BoardCastMsg]] = {}
+    group_msg_dict: dict[str, BoardCastMsg] = {}
     for qid in private_msgs:
         msgs = []
         for i in private_msgs[qid]:
@@ -261,8 +232,8 @@ def create_gradient_background(width, height, start_color, end_color=(255, 255, 
     start_color: 起始颜色，如 (230, 230, 255) 浅蓝
     end_color: 结束颜色，默认白色
     """
-    # 创建新图像
     image = Image.new("RGB", (width, height))
+    draw = ImageDraw.Draw(image)
 
     for y in range(height):
         # 计算当前行的颜色比例
@@ -273,11 +244,7 @@ def create_gradient_background(width, height, start_color, end_color=(255, 255, 
         g = int(end_color[1] * ratio + start_color[1] * (1 - ratio))
         b = int(end_color[2] * ratio + start_color[2] * (1 - ratio))
 
-        # 创建当前行的颜色
-        line_color = (r, g, b)
-        # 绘制当前行
-        for x in range(width):
-            image.putpixel((x, y), line_color)
+        draw.line([(0, y), (width - 1, y)], fill=(r, g, b))
 
     return image
 
@@ -331,9 +298,9 @@ async def msg_sign(
     uid: str,
     gid: str,
     qid: str,
-    private_msgs: Dict,
-    group_msgs: Dict,
-    all_msgs: Dict,
+    private_msgs: dict,
+    group_msgs: dict,
+    all_msgs: dict,
 ):
     if "禁止" in im:
         return

@@ -19,13 +19,11 @@ from .utils import (
     format_post_time,
     post_time_to_timestamp,
 )
-from ..utils import dna_api
 from ._image import (
     DETAIL_CACHE_PATH,
     PREVIEW_CACHE_PATH,
     wrap_text,
     cache_name,
-    fetch_image,
     line_height,
     load_qr_code,
     round_avatar,
@@ -38,8 +36,10 @@ from ..utils.image import (
     COLOR_FIRE_BRICK,
     COLOR_PALE_GOLDENROD,
     get_dna_bg,
+    download_pic_from_url,
 )
-from ..dna_config.prefix import DNA_PREFIX
+from ..utils.dna_api import dna_api
+from ..dna_config.prefix import dna_prefix
 from ..utils.fonts.dna_fonts import (
     unicode_font_18,
     unicode_font_22,
@@ -72,7 +72,7 @@ async def _load_preview(url: str, width: int, height: int) -> Image.Image | None
     if not url:
         return None
     try:
-        image = await fetch_image(PREVIEW_CACHE_PATH, url, name=cache_name("preview", url))
+        image = await download_pic_from_url(PREVIEW_CACHE_PATH, url, name=cache_name("preview", url))
     except OSError:
         return None
     return ImageOps.fit(image.convert("RGB"), (width, height), method=Image.Resampling.LANCZOS)
@@ -80,7 +80,7 @@ async def _load_preview(url: str, width: int, height: int) -> Image.Image | None
 
 async def _load_detail_image(url: str, max_width: int) -> Image.Image:
     try:
-        image = await fetch_image(DETAIL_CACHE_PATH, url, name=cache_name("detail", url))
+        image = await download_pic_from_url(DETAIL_CACHE_PATH, url, name=cache_name("detail", url))
     except OSError:
         return Image.new("RGB", (max_width, 320), (40, 30, 60))
     return shrink_to_width(image.convert("RGB"), max_width)
@@ -207,7 +207,7 @@ async def draw_ann_list_img() -> bytes | str:
     draw = ImageDraw.Draw(canvas)
     draw.text(
         (PADDING + 28, footer_top + footer_card_height // 2),
-        f"发送 {DNA_PREFIX}公告 + 序号 查看详情，例如：{DNA_PREFIX}公告 1",
+        f"发送 {dna_prefix()}公告 + 序号 查看详情，例如：{dna_prefix()}公告 1",
         font=unicode_font_22,
         fill=COLOR_TEXT_LIGHT,
         anchor="lm",

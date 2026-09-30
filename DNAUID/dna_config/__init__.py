@@ -1,4 +1,4 @@
-from gsuid_core.sv import SV, get_plugin_available_prefix
+from gsuid_core.sv import SV
 from gsuid_core.bot import Bot
 from gsuid_core.logger import logger
 from gsuid_core.models import Event
@@ -12,9 +12,6 @@ from ..utils.msgs.notify import (
 from ..utils.database.models import DNABind
 
 sv_dna_config = SV("DNAUID配置")
-
-
-DNA_PREFIX = get_plugin_available_prefix("DNAUID")
 
 
 @sv_dna_config.on_prefix(("开启", "关闭"))

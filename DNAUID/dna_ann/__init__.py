@@ -7,7 +7,7 @@ from gsuid_core.sv import SV
 from gsuid_core.aps import scheduler
 from gsuid_core.bot import Bot
 from gsuid_core.logger import logger
-from gsuid_core.models import Event
+from gsuid_core.models import Event, Message
 from gsuid_core.subscribe import gs_subscribe
 
 from .utils import resolve_index, fetch_ann_list, build_index_map
@@ -23,6 +23,10 @@ TASK_NAME_ANN = "订阅DNA公告"
 ANN_MIN_CHECK: int = DNAConfig.get_config("AnnMinuteCheck").data or 10
 
 
+def _as_message(img: bytes | list[bytes]) -> bytes | list[Message]:
+    return img if isinstance(img, bytes) else [Message(type="image", data=part) for part in img]
+
+
 @sv_ann.on_command("公告")
 async def ann_dna(bot: Bot, ev: Event):
     text = ev.text.strip().replace("#", "")
@@ -31,7 +35,7 @@ async def ann_dna(bot: Bot, ev: Event):
         result = await draw_ann_list_img()
         if isinstance(result, str):
             return await send_dna_notify(bot, ev, result)
-        return await bot.send(result)  # type: ignore
+        return await bot.send(result)
 
     posts = await fetch_ann_list(prefer_cache=True)
     if not posts:
@@ -44,7 +48,7 @@ async def ann_dna(bot: Bot, ev: Event):
     result = await draw_ann_detail_img(post_id)
     if isinstance(result, str):
         return await send_dna_notify(bot, ev, result)
-    return await bot.send(result)  # type: ignore
+    return await bot.send(_as_message(result))
 
 
 @sv_ann_sub.on_fullmatch("订阅公告")
@@ -118,7 +122,7 @@ async def check_dna_ann_state():
             if isinstance(img, str):
                 continue
             for sub in subs:
-                await sub.send(img)  # type: ignore
+                await sub.send(_as_message(img))
                 await asyncio.sleep(random.uniform(1, 3))
         except Exception as e:
             logger.exception(e)

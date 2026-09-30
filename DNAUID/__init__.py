@@ -1,5 +1,3 @@
-"""init"""
-
 from gsuid_core.sv import Plugins
 
 Plugins(

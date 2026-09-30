@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import asyncio
 from pathlib import Path
 
 from PIL import Image, ImageOps, ImageDraw
@@ -97,125 +98,84 @@ def get_dna_bg(w: int, h: int, bg: str = "bg") -> Image.Image:
     return crop_center_img(img, w, h)
 
 
+def _cache_exists(target: Path) -> bool:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target.exists()
+
+
+def _load_cached_pic(target: Path, size: tuple[int, int] | None) -> Image.Image:
+    with Image.open(target) as img:
+        return (img.resize(size) if size else img).convert("RGBA")
+
+
 async def download_pic_from_url(
     path: Path,
     pic_url: str,
     size: tuple[int, int] | None = None,
     name: str | None = None,
 ) -> Image.Image:
-    path.mkdir(parents=True, exist_ok=True)
-
     if name is None:
         name = pic_url.split("/")[-1]
-    _path = path / name
-    if not _path.exists():
-        _ = await download(pic_url, path, name, tag="[DNA]")
+    target = path / name
+    if not await asyncio.to_thread(_cache_exists, target):
+        await download(pic_url, path, name, tag="[DNA]")
+    return await asyncio.to_thread(_load_cached_pic, target, size)
 
-    img = Image.open(_path)
-    if size:
-        img = img.resize(size)
 
-    return img.convert("RGBA")
+def _open_asset(target: Path, size: tuple[int, int] | None, blank_size: tuple[int, int] | None) -> Image.Image:
+    if blank_size is not None and not target.exists():
+        return Image.new("RGBA", blank_size)
+    return _load_cached_pic(target, size)
+
+
+async def _fetch_asset(
+    directory: Path,
+    name: str,
+    pic_url: str | None,
+    *,
+    blank_size: tuple[int, int] | None,
+    size: tuple[int, int] | None = None,
+) -> Image.Image:
+    """读本地缓存，缺失且有 url 时先下载；仍缺图时给 blank_size 空图，blank_size=None 则抛 OSError"""
+    target = directory / name
+    if pic_url and not await asyncio.to_thread(_cache_exists, target):
+        await download(pic_url, directory, name, tag="[DNA]")
+    return await asyncio.to_thread(_open_asset, target, size, blank_size)
+
+
+def _attr_file_name(attr_id: str | int | None, pic_url: str | None) -> str:
+    if attr_id is None:
+        if not pic_url:
+            raise ValueError("attr_id 和 pic_url 不能同时为空")
+        attr_id = pic_url.split("/")[-1].split(".")[0]
+    return f"attr_{attr_id}.png"
 
 
 async def get_skill_img(char_id: str | int, skill_name: str, pic_url: str | None = None) -> Image.Image:
-    char_skill_dir = SKILL_PATH / str(char_id)
-    char_skill_dir.mkdir(parents=True, exist_ok=True)
-
-    skill_name = skill_name.strip()
-    name = f"skill_{skill_name}.png"
-    skill_path = char_skill_dir / name
-    if not skill_path.exists():
-        if pic_url:
-            _ = await download(pic_url, char_skill_dir, name, tag="[DNA]")
-    if not skill_path.exists():
-        return Image.new("RGBA", (128, 128))
-
-    return Image.open(skill_path).convert("RGBA")
+    name = f"skill_{skill_name.strip()}.png"
+    return await _fetch_asset(SKILL_PATH / str(char_id), name, pic_url, blank_size=(128, 128))
 
 
 async def get_avatar_img(char_id: str | int, pic_url: str | None = None) -> Image.Image:
-    char_avatar_dir = AVATAR_PATH
-    char_avatar_dir.mkdir(parents=True, exist_ok=True)
-
-    name = f"avatar_{char_id}.png"
-    avatar_path = char_avatar_dir / name
-    if not avatar_path.exists():
-        if pic_url:
-            _ = await download(pic_url, char_avatar_dir, name, tag="[DNA]")
-    if not avatar_path.exists():
-        return Image.new("RGBA", (256, 256))
-
-    return Image.open(avatar_path).convert("RGBA")
+    return await _fetch_asset(AVATAR_PATH, f"avatar_{char_id}.png", pic_url, blank_size=(256, 256))
 
 
 async def get_weapon_img(weapon_id: str | int, pic_url: str | None = None) -> Image.Image:
-    weapon_dir = WEAPON_PATH
-    weapon_dir.mkdir(parents=True, exist_ok=True)
-
     name = f"weapon_{weapon_id}.png"
-    weapon_path = weapon_dir / name
-    if not weapon_path.exists():
-        if pic_url:
-            _ = await download(pic_url, weapon_dir, name, tag="[DNA]")
-    if not weapon_path.exists():
-        return Image.new("RGBA", (256, 256))
-
-    return Image.open(weapon_path).resize((256, 256)).convert("RGBA")
+    return await _fetch_asset(WEAPON_PATH, name, pic_url, blank_size=(256, 256), size=(256, 256))
 
 
 async def get_attr_img(attr_id: str | int | None = None, pic_url: str | None = None) -> Image.Image:
-    if attr_id is None:
-        if pic_url:
-            attr_id = pic_url.split("/")[-1].split(".")[0]
-        else:
-            raise ValueError("attr_id 和 pic_url 不能同时为空")
-
-    attr_dir = ATTR_PATH
-    attr_dir.mkdir(parents=True, exist_ok=True)
-
-    name = f"attr_{attr_id}.png"
-    attr_path = attr_dir / name
-    if not attr_path.exists():
-        if pic_url:
-            _ = await download(pic_url, attr_dir, name, tag="[DNA]")
-
-    return Image.open(attr_path).convert("RGBA")
+    return await _fetch_asset(ATTR_PATH, _attr_file_name(attr_id, pic_url), pic_url, blank_size=None)
 
 
 async def get_weapon_attr_img(attr_id: str | int | None = None, pic_url: str | None = None) -> Image.Image:
-    if attr_id is None:
-        if pic_url:
-            attr_id = pic_url.split("/")[-1].split(".")[0]
-        else:
-            raise ValueError("attr_id 和 pic_url 不能同时为空")
-
-    attr_dir = WEAPON_ATTR_PATH
-    attr_dir.mkdir(parents=True, exist_ok=True)
-
-    name = f"attr_{attr_id}.png"
-    attr_path = attr_dir / name
-    if not attr_path.exists():
-        if pic_url:
-            _ = await download(pic_url, attr_dir, name, tag="[DNA]")
-
-    return Image.open(attr_path).convert("RGBA")
+    return await _fetch_asset(WEAPON_ATTR_PATH, _attr_file_name(attr_id, pic_url), pic_url, blank_size=None)
 
 
 async def get_paint_img(char_id: str | int, pic_url: str | None = None) -> Image.Image:
-    paint_dir = PAINT_PATH
-    paint_dir.mkdir(parents=True, exist_ok=True)
-
-    name = f"paint_{char_id}.png"
-    paint_path = paint_dir / name
-    if not paint_path.exists():
-        if pic_url:
-            _ = await download(pic_url, paint_dir, name, tag="[DNA]")
-    if not paint_path.exists():
-        return Image.new("RGBA", (1320, 1320))
-
-    with Image.open(paint_path) as image:
-        return _normalize_paint_img(image.convert("RGBA"))
+    image = await _fetch_asset(PAINT_PATH, f"paint_{char_id}.png", pic_url, blank_size=(1320, 1320))
+    return await asyncio.to_thread(_normalize_paint_img, image)
 
 
 def get_role_panel_img(char_id: str | int) -> tuple[Path, Image.Image] | None:
@@ -236,18 +196,7 @@ def get_role_panel_img(char_id: str | int) -> tuple[Path, Image.Image] | None:
 
 
 async def get_mod_img(mod_id: str | int, pic_url: str | None = None) -> Image.Image:
-    mod_dir = MOD_PATH
-    mod_dir.mkdir(parents=True, exist_ok=True)
-
-    name = f"mod_{mod_id}.png"
-    mod_path = mod_dir / name
-    if not mod_path.exists():
-        if pic_url:
-            _ = await download(pic_url, mod_dir, name, tag="[DNA]")
-    if not mod_path.exists():
-        return Image.new("RGBA", (256, 256))
-
-    return Image.open(mod_path).convert("RGBA")
+    return await _fetch_asset(MOD_PATH, f"mod_{mod_id}.png", pic_url, blank_size=(256, 256))
 
 
 def get_grade_img(grade_level: int) -> Image.Image:

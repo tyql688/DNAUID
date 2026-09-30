@@ -1,4 +1,6 @@
 import json
+import asyncio
+from pathlib import Path
 
 from ..utils.name_convert import (
     all_char_list,
@@ -12,12 +14,20 @@ from ..utils.name_convert import (
 from ..utils.resource.RESOURCE_PATH import CHAR_ALIAS_PATH, WEAPON_ALIAS_PATH
 
 
-async def action_char_alias(action: str, char_name: str, new_alias: str) -> str:
-    if not CHAR_ALIAS_PATH.exists():
-        return "别名配置文件不存在，请检查文件路径"
+def _load_alias_file(path: Path) -> dict[str, list[str]] | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
-    with open(CHAR_ALIAS_PATH, "r", encoding="UTF-8") as f:
-        data = json.load(f)
+
+def _save_alias_file(path: Path, data: dict[str, list[str]]) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def action_char_alias(action: str, char_name: str, new_alias: str) -> str:
+    data = await asyncio.to_thread(_load_alias_file, CHAR_ALIAS_PATH)
+    if data is None:
+        return "别名配置文件不存在，请检查文件路径"
 
     std_char_name = alias_to_char_name(char_name)
     if not std_char_name:
@@ -30,15 +40,13 @@ async def action_char_alias(action: str, char_name: str, new_alias: str) -> str:
 
         # 角色可能只存在于内置层，data 文件还没有对应 key
         data.setdefault(std_char_name, []).append(new_alias)
-        with open(CHAR_ALIAS_PATH, "w", encoding="UTF-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        await asyncio.to_thread(_save_alias_file, CHAR_ALIAS_PATH, data)
         return f"成功为角色【{char_name}】添加别名【{new_alias}】"
 
     elif action == "删除":
         if new_alias in data.get(std_char_name, []):
             data[std_char_name].remove(new_alias)
-            with open(CHAR_ALIAS_PATH, "w", encoding="UTF-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            await asyncio.to_thread(_save_alias_file, CHAR_ALIAS_PATH, data)
             return f"成功为角色【{std_char_name}】删除别名【{new_alias}】"
 
         if new_alias in builtin_alias_list(std_char_name):
@@ -66,11 +74,9 @@ async def all_char_list_alias() -> str:
 
 
 async def action_weapon_alias(action: str, weapon_name: str, new_alias: str) -> str:
-    if not WEAPON_ALIAS_PATH.exists():
+    data = await asyncio.to_thread(_load_alias_file, WEAPON_ALIAS_PATH)
+    if data is None:
         return "武器别名配置文件不存在"
-
-    with open(WEAPON_ALIAS_PATH, "r", encoding="UTF-8") as f:
-        data = json.load(f)
 
     std_weapon_name = alias_to_weapon_name(weapon_name)
     # alias_to_weapon_name 查不到时原样返回输入，用合并视图判断武器是否存在
@@ -83,15 +89,13 @@ async def action_weapon_alias(action: str, weapon_name: str, new_alias: str) -> 
 
         # 武器可能只存在于内置层，data 文件还没有对应 key
         data.setdefault(std_weapon_name, []).append(new_alias)
-        with open(WEAPON_ALIAS_PATH, "w", encoding="UTF-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        await asyncio.to_thread(_save_alias_file, WEAPON_ALIAS_PATH, data)
         return f"成功为武器【{weapon_name}】添加别名【{new_alias}】"
 
     elif action == "删除":
         if new_alias in data.get(std_weapon_name, []):
             data[std_weapon_name].remove(new_alias)
-            with open(WEAPON_ALIAS_PATH, "w", encoding="UTF-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            await asyncio.to_thread(_save_alias_file, WEAPON_ALIAS_PATH, data)
             return f"成功为武器【{std_weapon_name}】删除别名【{new_alias}】"
 
         if new_alias in builtin_alias_list(std_weapon_name, is_weapon=True):

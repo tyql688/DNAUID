@@ -1,10 +1,11 @@
 import asyncio
 import functools
-from typing import Any, Dict, List, Type, Union, TypeVar, Optional
+from typing import Any, Literal, TypeVar, ClassVar
 
 from sqlmodel import Field, col, select
 from sqlalchemy import null, delete, update
 from sqlalchemy.sql import or_, and_
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gsuid_core.webconsole.mount_app import PageSchema, GsAdminModel, site
@@ -17,8 +18,6 @@ from gsuid_core.utils.database.base_models import (
 )
 
 from ..utils import get_today_date
-
-NO_CHANGE = object()
 
 exec_list.extend(
     [
@@ -54,24 +53,24 @@ def with_lock(func):
 
 
 class DNABind(Bind, table=True):
-    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    __table_args__: dict[str, Any] = {"extend_existing": True}
     uid: str = Field(default=None, title="二重螺旋uid")
 
     @classmethod
     @with_session
-    async def get_group_all_uid(cls: Type[T_DNABind], session: AsyncSession, group_id: str) -> List[T_DNABind]:
+    async def get_group_all_uid(cls: type[T_DNABind], session: AsyncSession, group_id: str) -> list[T_DNABind]:
         result = await session.scalars(select(cls).where(col(cls.group_id).contains(group_id)))
         return list(result.all()) if result else []
 
     @classmethod
     async def insert_uid(
-        cls: Type[T_DNABind],
+        cls: type[T_DNABind],
         user_id: str,
         bot_id: str,
         uid: str,
-        group_id: Optional[str] = None,
-        lenth_limit: Optional[int] = None,
-        is_digit: Optional[bool] = True,
+        group_id: str | None = None,
+        lenth_limit: int | None = None,
+        is_digit: bool | None = True,
     ) -> int:
         """
         0: 成功
@@ -94,7 +93,7 @@ class DNABind(Bind, table=True):
             return code
 
         # 获取历史
-        result: Optional[T_DNABind] = await cls.select_data(user_id, bot_id)
+        result: T_DNABind | None = await cls.select_data(user_id, bot_id)
         if not result:
             return -1
 
@@ -108,7 +107,7 @@ class DNABind(Bind, table=True):
     @classmethod
     @with_session
     async def delete_uid(
-        cls: Type[T_DNABind],
+        cls: type[T_DNABind],
         session: AsyncSession,
         user_id: str,
         bot_id: str,
@@ -132,14 +131,14 @@ class DNABind(Bind, table=True):
 
     @classmethod
     @with_session
-    async def delete_all_uid(cls: Type[T_DNABind], session: AsyncSession, user_id: str, bot_id: str) -> int:
+    async def delete_all_uid(cls: type[T_DNABind], session: AsyncSession, user_id: str, bot_id: str) -> int:
         sql = delete(cls).where(and_(col(cls.user_id) == user_id, col(cls.bot_id) == bot_id))
         await session.execute(sql)
         return 0
 
 
 class DNAUser(User, table=True):
-    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    __table_args__: dict[str, Any] = {"extend_existing": True}
     cookie: str = Field(default="", title="Cookie")
     uid: str = Field(default=None, title="二重螺旋uid")
     dev_code: str = Field(default=None, title="设备ID")
@@ -153,7 +152,7 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
-    async def mark_cookie_invalid(cls: Type[T_DNAUser], session: AsyncSession, uid: str, cookie: str, mark: str):
+    async def mark_cookie_invalid(cls: type[T_DNAUser], session: AsyncSession, uid: str, cookie: str, mark: str):
         sql = update(cls).where(col(cls.uid) == uid).where(col(cls.cookie) == cookie).values(status=mark)
         await session.execute(sql)
         return True
@@ -161,12 +160,12 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_cookie(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
         uid: str,
         user_id: str,
         bot_id: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         sql = select(cls).where(
             cls.user_id == user_id,
             cls.uid == uid,
@@ -179,12 +178,12 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_dna_user(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
         uid: str,
         user_id: str,
         bot_id: str,
-    ) -> Optional[T_DNAUser]:
+    ) -> T_DNAUser | None:
         sql = select(cls).where(
             cls.user_id == user_id,
             cls.uid == uid,
@@ -197,11 +196,11 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_dna_users(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
         user_id: str,
         bot_id: str,
-    ) -> List[T_DNAUser]:
+    ) -> list[T_DNAUser]:
         sql = select(cls).where(
             cls.user_id == user_id,
             cls.bot_id == bot_id,
@@ -213,12 +212,12 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_web_user(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
         uid: str,
         user_id: str,
         bot_id: str,
-    ) -> Optional[T_DNAUser]:
+    ) -> T_DNAUser | None:
         sql = select(cls).where(
             cls.user_id == user_id,
             cls.uid == uid,
@@ -233,10 +232,10 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_user_cookie_uids(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
         user_id: str,
-    ) -> List[str]:
+    ) -> list[str]:
         sql = select(cls).where(
             and_(
                 col(cls.user_id) == user_id,
@@ -251,7 +250,7 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
-    async def select_data_by_cookie(cls: Type[T_DNAUser], session: AsyncSession, cookie: str) -> Optional[T_DNAUser]:
+    async def select_data_by_cookie(cls: type[T_DNAUser], session: AsyncSession, cookie: str) -> T_DNAUser | None:
         sql = select(cls).where(cls.cookie == cookie)
         result = await session.execute(sql)
         data = result.scalars().all()
@@ -260,8 +259,8 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def select_data_by_cookie_and_uid(
-        cls: Type[T_DNAUser], session: AsyncSession, cookie: str, uid: str
-    ) -> Optional[T_DNAUser]:
+        cls: type[T_DNAUser], session: AsyncSession, cookie: str, uid: str
+    ) -> T_DNAUser | None:
         sql = select(cls).where(cls.cookie == cookie, cls.uid == uid)
         result = await session.execute(sql)
         data = result.scalars().all()
@@ -269,12 +268,12 @@ class DNAUser(User, table=True):
 
     @classmethod
     async def get_user_by_attr(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         user_id: str,
         bot_id: str,
         attr_key: str,
         attr_value: str,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         user_list = await cls.select_data_list(user_id=user_id, bot_id=bot_id)
         if not user_list:
             return None
@@ -285,7 +284,7 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
-    async def get_dna_all_user(cls: Type[T_DNAUser], session: AsyncSession) -> List[T_DNAUser]:
+    async def get_dna_all_user(cls: type[T_DNAUser], session: AsyncSession) -> list[T_DNAUser]:
         """获取所有有效用户"""
         sql = select(cls).where(
             and_(
@@ -302,9 +301,9 @@ class DNAUser(User, table=True):
     @classmethod
     @with_session
     async def get_all_card_users(
-        cls: Type[T_DNAUser],
+        cls: type[T_DNAUser],
         session: AsyncSession,
-    ) -> List[T_DNAUser]:
+    ) -> list[T_DNAUser]:
         app_available = and_(
             col(cls.cookie) != null(),
             col(cls.cookie) != "",
@@ -320,7 +319,7 @@ class DNAUser(User, table=True):
 
     @classmethod
     @with_session
-    async def delete_all_invalid_cookie(cls, session: AsyncSession):
+    async def delete_all_invalid_cookie(cls, session: AsyncSession) -> int:
         """删除所有无效缓存"""
         app_unavailable = or_(
             col(cls.status) == "无效",
@@ -336,7 +335,7 @@ class DNAUser(User, table=True):
             and_(app_unavailable, web_unavailable),
         )
         result = await session.execute(sql)
-        return result.rowcount  # type: ignore
+        return result.rowcount if isinstance(result, CursorResult) else 0
 
     @classmethod
     @with_session
@@ -346,7 +345,7 @@ class DNAUser(User, table=True):
         user_id: str,
         bot_id: str,
         uid: str,
-    ):
+    ) -> int:
         sql = delete(cls).where(
             and_(
                 col(cls.user_id) == user_id,
@@ -355,11 +354,11 @@ class DNAUser(User, table=True):
             )
         )
         result = await session.execute(sql)
-        return result.rowcount  # type: ignore
+        return result.rowcount if isinstance(result, CursorResult) else 0
 
 
 class DNASign(BaseIDModel, table=True):
-    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    __table_args__: dict[str, Any] = {"extend_existing": True}
     uid: str = Field(title="二重螺旋UID")
     game_sign: int = Field(default=0, title="游戏签到")
     bbs_sign: int = Field(default=0, title="社区签到")
@@ -376,11 +375,11 @@ class DNASign(BaseIDModel, table=True):
 
     @classmethod
     async def _find_sign_record(
-        cls: Type[T_DNASign],
+        cls: type[T_DNASign],
         session: AsyncSession,
         uid: str,
         date: str,
-    ) -> Optional[T_DNASign]:
+    ) -> T_DNASign | None:
         """查找指定UID和日期的签到记录（内部方法）"""
         query = select(cls).where(cls.uid == uid).where(cls.date == date)
         result = await session.execute(query)
@@ -390,10 +389,10 @@ class DNASign(BaseIDModel, table=True):
     @with_lock
     @with_session
     async def upsert_dna_sign(
-        cls: Type[T_DNASign],
+        cls: type[T_DNASign],
         session: AsyncSession,
         dna_sign_data: T_DNASign,
-    ) -> Optional[T_DNASign]:
+    ) -> T_DNASign | None:
         """
         插入或更新签到数据
         返回更新后的记录或新插入的记录
@@ -431,11 +430,11 @@ class DNASign(BaseIDModel, table=True):
     @classmethod
     @with_session
     async def get_sign_data(
-        cls: Type[T_DNASign],
+        cls: type[T_DNASign],
         session: AsyncSession,
         uid: str,
-        date: Optional[str] = None,
-    ) -> Optional[T_DNASign]:
+        date: str | None = None,
+    ) -> T_DNASign | None:
         """根据UID和日期查询签到数据"""
         date = date or get_today_date()
         return await cls._find_sign_record(session, uid, date)
@@ -443,10 +442,10 @@ class DNASign(BaseIDModel, table=True):
     @classmethod
     @with_session
     async def get_all_sign_data_by_date(
-        cls: Type[T_DNASign],
+        cls: type[T_DNASign],
         session: AsyncSession,
-        date: Optional[str] = None,
-    ) -> List[T_DNASign]:
+        date: str | None = None,
+    ) -> list[T_DNASign]:
         """根据日期查询所有签到数据"""
         actual_date = date or get_today_date()
         sql = select(cls).where(cls.date == actual_date)
@@ -457,33 +456,33 @@ class DNASign(BaseIDModel, table=True):
     @with_lock
     @with_session
     async def clear_sign_record(
-        cls: Type[T_DNASign],
+        cls: type[T_DNASign],
         session: AsyncSession,
         date: str,
     ):
         """清除签到记录"""
-        sql = delete(cls).where(getattr(cls, "date") <= date)
+        sql = delete(cls).where(col(cls.date) <= date)
         await session.execute(sql)
 
 
 class DNAPrivacy(BaseIDModel, table=True):
     """隐私设置表：存储用户的窥屏权限设置"""
 
-    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    __table_args__: dict[str, Any] = {"extend_existing": True}
     user_id: str = Field(default=None, title="用户ID")
     bot_id: str = Field(default=None, title="Bot ID")
-    group_id: Optional[str] = Field(default=None, title="群组ID")
+    group_id: str | None = Field(default=None, title="群组ID")
     allow_peek: bool = Field(default=True, title="允许被窥屏")
     uid_hidden: bool = Field(default=False, title="隐藏UID")
 
     @classmethod
     @with_session
     async def get_privacy_setting(
-        cls: Type[T_DNAPrivacy],
+        cls: type[T_DNAPrivacy],
         session: AsyncSession,
         user_id: str,
         bot_id: str,
-    ) -> Optional[T_DNAPrivacy]:
+    ) -> T_DNAPrivacy | None:
         """获取用户的隐私设置"""
         sql = select(cls).where(
             cls.user_id == user_id,
@@ -497,12 +496,12 @@ class DNAPrivacy(BaseIDModel, table=True):
     @with_lock
     @with_session
     async def set_privacy_setting(
-        cls: Type[T_DNAPrivacy],
+        cls: type[T_DNAPrivacy],
         session: AsyncSession,
         user_id: str,
         bot_id: str,
-        allow_peek: Optional[bool] = None,
-        uid_hidden: Optional[bool] = None,
+        allow_peek: bool | None = None,
+        uid_hidden: bool | None = None,
     ) -> T_DNAPrivacy:
         """设置用户的隐私设置
 
@@ -541,7 +540,7 @@ class DNAPrivacy(BaseIDModel, table=True):
     @classmethod
     @with_session
     async def is_uid_hidden(
-        cls: Type[T_DNAPrivacy],
+        cls: type[T_DNAPrivacy],
         session: AsyncSession,
         user_id: str,
         bot_id: str,
@@ -557,11 +556,11 @@ class DNAPrivacy(BaseIDModel, table=True):
         sql = (
             select(cls)
             .where(
-                cls.user_id == user_id,
-                cls.bot_id == bot_id,
-                cls.group_id.is_(None),
+                col(cls.user_id) == user_id,
+                col(cls.bot_id) == bot_id,
+                col(cls.group_id).is_(None),
             )
-            .order_by(cls.id.desc())
+            .order_by(col(cls.id).desc())
             .limit(1)
         )
         result = await session.execute(sql)
@@ -574,21 +573,21 @@ class DNAPrivacy(BaseIDModel, table=True):
 class DNAGroupPrivacy(BaseIDModel, table=True):
     """群组隐私设置表：存储群的全体隐私设置"""
 
-    __tablename__ = "dna_group_privacy"
-    __table_args__: Dict[str, Any] = {"extend_existing": True}
+    __tablename__: ClassVar[str] = "dna_group_privacy"
+    __table_args__: dict[str, Any] = {"extend_existing": True}
     group_id: str = Field(default=None, title="群组ID", unique=True)
     bot_id: str = Field(default=None, title="Bot ID")
-    force_allow_peek: Optional[bool] = Field(default=None, title="强制全体允许窥屏")
-    force_uid_hidden: Optional[bool] = Field(default=None, title="强制全体隐藏UID")
+    force_allow_peek: bool | None = Field(default=None, title="强制全体允许窥屏")
+    force_uid_hidden: bool | None = Field(default=None, title="强制全体隐藏UID")
 
     @classmethod
     @with_session
     async def get_group_privacy(
-        cls: Type[T_DNAGroupPrivacy],
+        cls: type[T_DNAGroupPrivacy],
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-    ) -> Optional[T_DNAGroupPrivacy]:
+    ) -> T_DNAGroupPrivacy | None:
         """获取群的隐私设置"""
         sql = select(cls).where(
             cls.group_id == group_id,
@@ -602,55 +601,33 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
     @with_lock
     @with_session
     async def set_group_force_privacy(
-        cls: Type[T_DNAGroupPrivacy],
+        cls: type[T_DNAGroupPrivacy],
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-        force_allow_peek: Union[bool, None, Any] = NO_CHANGE,
-        force_uid_hidden: Union[bool, None, Any] = NO_CHANGE,
+        field: Literal["force_allow_peek", "force_uid_hidden"],
+        value: bool | None,
     ) -> T_DNAGroupPrivacy:
-        """设置群的强制隐私设置
-
-        Args:
-            group_id: 群组ID
-            bot_id: Bot ID
-            force_allow_peek: 强制全体开偷窥/防偷窥，NO_CHANGE 表示不修改，None 表示清除设置
-            force_uid_hidden: 强制全体隐藏UID，NO_CHANGE 表示不修改，None 表示清除设置
-        """
-        sql = select(cls).where(
-            cls.group_id == group_id,
-            cls.bot_id == bot_id,
-        )
-        result = await session.execute(sql)
-        data = result.scalars().all()
-
-        if data:
-            # 更新现有记录
-            record = data[0]
-            if force_allow_peek is not NO_CHANGE:
-                record.force_allow_peek = force_allow_peek
-            if force_uid_hidden is not NO_CHANGE:
-                record.force_uid_hidden = force_uid_hidden
-            return record
+        """设置群的一项强制隐私设置，value=None 表示清除该项"""
+        sql = select(cls).where(col(cls.group_id) == group_id, col(cls.bot_id) == bot_id)
+        record = (await session.execute(sql)).scalars().first()
+        if record is None:
+            record = cls(group_id=group_id, bot_id=bot_id)
+            session.add(record)
+        if field == "force_allow_peek":
+            record.force_allow_peek = value
         else:
-            # 创建新记录
-            new_record = cls(
-                group_id=group_id,
-                bot_id=bot_id,
-                force_allow_peek=force_allow_peek if force_allow_peek is not NO_CHANGE else None,
-                force_uid_hidden=force_uid_hidden if force_uid_hidden is not NO_CHANGE else None,
-            )
-            session.add(new_record)
-            return new_record
+            record.force_uid_hidden = value
+        return record
 
     @classmethod
     @with_session
     async def check_group_force_privacy(
-        cls: Type[T_DNAGroupPrivacy],
+        cls: type[T_DNAGroupPrivacy],
         session: AsyncSession,
         group_id: str,
         bot_id: str,
-    ) -> Optional[bool]:
+    ) -> bool | None:
         """检查群是否有强制隐私设置
 
         返回值:
@@ -671,11 +648,11 @@ class DNAGroupPrivacy(BaseIDModel, table=True):
     @classmethod
     @with_session
     async def check_uid_hidden(
-        cls: Type[T_DNAGroupPrivacy],
+        cls: type[T_DNAGroupPrivacy],
         session: AsyncSession,
-        group_id: Optional[str],
+        group_id: str | None,
         bot_id: str,
-    ) -> Optional[bool]:
+    ) -> bool | None:
         """检查群是否有强制UID隐藏设置
 
         返回值:
@@ -702,7 +679,7 @@ class DNABindAdmin(GsAdminModel):
     page_schema = PageSchema(
         label="二重螺旋绑定管理",
         icon="fa fa-group",
-    )  # type: ignore
+    )
 
     # 配置管理模型
     model = DNABind
@@ -714,7 +691,7 @@ class DNAUserAdmin(GsAdminModel):
     page_schema = PageSchema(
         label="二重螺旋用户管理",
         icon="fa fa-users",
-    )  # type: ignore
+    )
 
     # 配置管理模型
     model = DNAUser
@@ -726,7 +703,7 @@ class DNASignAdmin(GsAdminModel):
     page_schema = PageSchema(
         label="二重螺旋签到管理",
         icon="fa fa-check",
-    )  # type: ignore
+    )
 
     # 配置管理模型
     model = DNASign
@@ -738,7 +715,7 @@ class DNAPrivacyAdmin(GsAdminModel):
     page_schema = PageSchema(
         label="二重螺旋隐私管理",
         icon="fa fa-eye-slash",
-    )  # type: ignore
+    )
 
     # 配置管理模型
     model = DNAPrivacy
@@ -750,7 +727,7 @@ class DNAGroupPrivacyAdmin(GsAdminModel):
     page_schema = PageSchema(
         label="二重螺旋群隐私管理",
         icon="fa fa-users-slash",
-    )  # type: ignore
+    )
 
     # 配置管理模型
     model = DNAGroupPrivacy

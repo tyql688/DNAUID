@@ -1,8 +1,8 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 
-class BoardcastTypeEnum(str, Enum):
+class BoardcastTypeEnum(StrEnum):
     """订阅类型"""
 
     SIGN_RESULT = "订阅二重螺旋签到结果"

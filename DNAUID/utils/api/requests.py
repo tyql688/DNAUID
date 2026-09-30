@@ -1,9 +1,11 @@
+import sys
 import json
 import random
 import asyncio
-import inspect
-from typing import Any, Dict, List, Union, Literal, Mapping, TypeVar, Optional
+import contextlib
+from typing import Any, Literal, TypeVar
 from datetime import datetime
+from collections.abc import Mapping
 
 import aiohttp
 
@@ -82,10 +84,10 @@ _DamageDataT = TypeVar("_DamageDataT")
 class DNAApi:
     ssl_verify = True
     ann_list_data = []
-    _sessions: Dict[str, aiohttp.ClientSession] = {}
+    _sessions: dict[str, aiohttp.ClientSession] = {}
     _session_lock = asyncio.Lock()
 
-    async def get_session(self, proxy: Optional[str] = None) -> aiohttp.ClientSession:
+    async def get_session(self, proxy: str | None = None) -> aiohttp.ClientSession:
         # 使用代理 URL 作为 key，None 表示直连
         key = proxy or "no_proxy"
 
@@ -104,13 +106,13 @@ class DNAApi:
             self._sessions[key] = session
             return session
 
-    async def get_dna_user(self, uid: str, user_id: str, bot_id: str) -> Optional[DNAUser]:
+    async def get_dna_user(self, uid: str, user_id: str, bot_id: str) -> DNAUser | None:
         dna_user = await DNAUser.select_dna_user(uid, user_id, bot_id)
         if dna_user is None:
             return None
         return await self._prepare_dna_user(dna_user)
 
-    async def get_random_dna_user(self) -> Optional[DNAUser]:
+    async def get_random_dna_user(self) -> DNAUser | None:
         dna_users = await DNAUser.get_all_card_users()
         if not dna_users:
             return None
@@ -142,7 +144,7 @@ class DNAApi:
             return dna_user
         return None
 
-    async def check_cookie(self, dna_user: DNAUser) -> Optional[DNAUser]:
+    async def check_cookie(self, dna_user: DNAUser) -> DNAUser | None:
         credentials = get_capability_credentials(
             dna_user,
             DNACapability.ACCOUNT_QUERY,
@@ -152,8 +154,6 @@ class DNAApi:
 
         dr = check_decrypt_dnum(credentials.d_num)
         logger.debug(f"[DNA登录] 检查 App 凭据 uid={dna_user.uid} dr={dr}")
-        # if dr > 0:
-        #     return dna_user
 
         if dr == 0 and credentials.refresh_token != "":
             res = await self.refresh_token(
@@ -231,7 +231,7 @@ class DNAApi:
             "vJson": v_json,
         }
         rsa_pub = await self.get_rsa_public_key()
-        signed_headers, signed_payload = get_signed_headers_and_body(
+        signed_headers, signed_payload = await get_signed_headers_and_body(
             url=GET_SMS_CODE_URL,
             header=headers,
             data=payload,
@@ -271,7 +271,7 @@ class DNAApi:
         headers = await get_base_header(dev_code)
         payload = {"code": code, "devCode": dev_code, "gameList": DNA_GAME_ID, "loginType": 1, "mobile": mobile}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=LOGIN_URL,
             header=headers,
             data=payload,
@@ -305,7 +305,7 @@ class DNAApi:
         headers = await get_base_header(dev_code=dev_code, token=token)
         payload = {"refreshToken": refresh_token}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=REFRESH_TOKEN_URL,
             header=headers,
             data=payload,
@@ -314,7 +314,7 @@ class DNAApi:
         return await self._dna_request(REFRESH_TOKEN_URL, "POST", headers, data=payload)
 
     @timed_async_cache(3600, lambda x: x and x.success)
-    async def login_log(self, token: str, dev_code: Optional[str] = None):
+    async def login_log(self, token: str, dev_code: str | None = None):
         headers = await get_base_header(dev_code=dev_code, token=token)
         res = await self._dna_request(LOGIN_LOG_URL, "POST", headers)
         await asyncio.sleep(1 + random.uniform(0, 0.5))
@@ -328,7 +328,7 @@ class DNAApi:
         headers = await get_base_header(dev_code=dev_code, token=token)
         payload = {}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=ROLE_LIST_URL,
             header=headers,
             data=payload,
@@ -365,7 +365,7 @@ class DNAApi:
         )
         payload = {"type": 1}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=ROLE_FOR_TOOL_URL,
             header=header,
             data=payload,
@@ -566,7 +566,7 @@ class DNAApi:
         )
         payload = {}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=SHORT_NOTE_URL,
             header=headers,
             data=payload,
@@ -649,7 +649,7 @@ class DNAApi:
         )
         payload = {"dayAwardId": day_award_id, "periodId": period, "signinType": 1}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=GAME_SIGN_URL,
             header=headers,
             data=payload,
@@ -673,7 +673,7 @@ class DNAApi:
         )
         payload = {"gameId": DNA_GAME_ID}
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=BBS_SIGN_URL,
             header=headers,
             data=payload,
@@ -765,7 +765,7 @@ class DNAApi:
     async def do_like(
         self,
         dna_user: DNAUser,
-        post: Dict[str, Any],
+        post: dict[str, Any],
     ) -> DNAApiResp[Any]:
         """点赞帖子"""
         credentials = get_capability_credentials(
@@ -791,7 +791,7 @@ class DNAApi:
             "toUserId": post.get("userId"),
         }
         rsa_pub = await self.get_rsa_public_key()
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=LIKE_POST_URL,
             header=headers,
             data=payload,
@@ -828,7 +828,7 @@ class DNAApi:
     async def do_reply(
         self,
         dna_user: DNAUser,
-        post: Dict[str, Any],
+        post: dict[str, Any],
         content: str,
     ) -> DNAApiResp[Any]:
         """回复帖子"""
@@ -851,7 +851,7 @@ class DNAApi:
             "content": content_json,
             "toUserId": post.get("userId"),
         }
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=REPLY_POST_URL,
             header=header,
             data=payload,
@@ -899,7 +899,7 @@ class DNAApi:
         wiki_type: int = 1,
         page_num: int = 1,
         page_size: int = 20,
-        filter_ids: Optional[str] = None,
+        filter_ids: str | None = None,
     ):
         """获取图鉴列表
 
@@ -910,7 +910,7 @@ class DNAApi:
             filter_ids: 筛选条件ID，多个用逗号分隔
         """
         headers = await get_base_header(is_h5=True, is_need_origin=True, is_need_refer=True)
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "pageNum": page_num,
             "pageSize": page_size,
             "id": wiki_type,  # 使用 categorize ID 而非 WikiType 枚举值
@@ -948,7 +948,7 @@ class DNAApi:
             "endTime": "2026-04-05 23:59:59",
             "startTime": "2025-12-01 00:00:00",
         }
-        headers, payload = get_signed_headers_and_body(
+        headers, payload = await get_signed_headers_and_body(
             url=ACTIVITY_LIST_URL,
             header=headers,
             data=payload,
@@ -960,18 +960,19 @@ class DNAApi:
         self,
         url: str,
         method: Literal["GET", "POST"] = "GET",
-        header: Optional[Mapping[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        data: Optional[Union[str, Dict[str, Any]]] = None,
+        header: Mapping[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        data: str | dict[str, Any] | None = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-    ) -> DNAApiResp[Union[str, Dict[str, Any], List[Any]]]:
+    ) -> DNAApiResp[str | dict[str, Any] | list[Any]]:
         if header is None:
             header = await get_base_header()
 
         proxy_func = get_need_proxy_func()
-        func = inspect.stack()[1].function
+        # 取调用方函数名做代理路由；请求热路径，只读一帧
+        func = sys._getframe(1).f_code.co_name
         if func in proxy_func or "all" in proxy_func:
             proxy_url = get_local_proxy_url()
         else:
@@ -1002,11 +1003,10 @@ class DNAApi:
                             "code": RespCode.ERROR.value,
                             "data": _raw_data,
                         }
-                    if isinstance(raw_res, dict):
-                        try:
-                            raw_res["data"] = json.loads(raw_res.get("data", ""))
-                        except Exception:
-                            pass
+                    if isinstance(raw_res, dict) and isinstance(raw_res.get("data"), str):
+                        # data 可能是 JSON 字符串也可能是普通文本，非 JSON 时保留原文
+                        with contextlib.suppress(ValueError):
+                            raw_res["data"] = json.loads(raw_res["data"])
 
                     logger.debug(
                         f"[DNA] url:[{url}] func:[{func}] "

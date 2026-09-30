@@ -1,7 +1,10 @@
 import base64
 import random
 import hashlib
-from typing import Any, Dict
+from typing import Any
+
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
 
 
 def rand_str(length: int) -> str:
@@ -18,11 +21,6 @@ def rand_digit_str(length: int) -> str:
 def rsa_encrypt(data: str, public_key_base64: str) -> str:
     """RSA/ECB/PKCS1Padding 加密，支持分段（每段最多 117 字节）"""
     try:
-        from Crypto.Cipher import PKCS1_v1_5
-        from Crypto.PublicKey import RSA
-    except Exception:
-        raise RuntimeError("[DNA] 缺少依赖: 需要 pycryptodome 执行 RSA 加密。请安装: uv add pycryptodome")
-    try:
         key = RSA.importKey(base64.b64decode(public_key_base64))
         cipher = PKCS1_v1_5.new(key)
         raw = data.encode("utf-8")
@@ -35,7 +33,7 @@ def rsa_encrypt(data: str, public_key_base64: str) -> str:
             offset += max_block
         return base64.b64encode(result).decode("utf-8")
     except Exception as e:
-        raise RuntimeError(f"RSA Encrypt Error: {e}")
+        raise RuntimeError(f"RSA Encrypt Error: {e}") from e
 
 
 def xor_encode(text: str, key: str) -> str:
@@ -55,7 +53,7 @@ def shuffle_md5(md5_hex: str) -> str:
     return "".join(chars)
 
 
-def sign_shuffled(params: Dict[str, Any], app_key: str) -> str:
+def sign_shuffled(params: dict[str, Any], app_key: str) -> str:
     """按 key 排序拼接参数 → MD5 → shuffle"""
     pairs = [f"{k}={params[k]}" for k in sorted(params) if params[k] is not None and str(params[k]) != ""]
     pairs.append(app_key)

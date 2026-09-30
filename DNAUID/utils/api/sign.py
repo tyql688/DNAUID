@@ -1,5 +1,6 @@
 import uuid
-from typing import Any, Dict, Tuple
+import asyncio
+from typing import Any
 
 from .sign_130 import generate_headers_130
 
@@ -27,12 +28,22 @@ def get_dev_code() -> str:
     return str(uuid.uuid4()).upper()
 
 
-def get_signed_headers_and_body(
+async def get_signed_headers_and_body(
     url: str,
-    header: Dict[str, str],
-    data: Dict[str, Any],
+    header: dict[str, str],
+    data: dict[str, Any],
     rsa_public_key: str,
-) -> Tuple[Dict[str, str], Dict[str, Any]]:
+) -> tuple[dict[str, str], dict[str, Any]]:
+    # 等 WebSocket 握手（threading.Event）和 RSA 签名都会阻塞，放线程里跑
+    return await asyncio.to_thread(_sign_headers_and_body, url, header, data, rsa_public_key)
+
+
+def _sign_headers_and_body(
+    url: str,
+    header: dict[str, str],
+    data: dict[str, Any],
+    rsa_public_key: str,
+) -> tuple[dict[str, str], dict[str, Any]]:
     if not any(url.endswith(api) for api in SIGN_API_LIST):
         return header, data
 

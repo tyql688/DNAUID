@@ -1,9 +1,8 @@
 import time
 import base64
-from typing import Optional
 
 
-def decrypt_dnum(d_num_encoded: str) -> Optional[str]:
+def decrypt_dnum(d_num_encoded: str) -> str | None:
     if not d_num_encoded:
         return None
 

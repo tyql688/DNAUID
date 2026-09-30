@@ -3,9 +3,9 @@ from gsuid_core.aps import scheduler
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 
-from ..utils import TZ
 from .draw_mh import draw_mh
 from .push_mh import send_mh_notify
+from ..utils.utils import TZ
 from .subscribe_mh import (
     subscribe_mh,
     get_mh_subscribe,
@@ -63,11 +63,11 @@ async def dna_mh_subscribe(bot: Bot, ev: Event):
 
 @sv_mh_subscribe_cycle.on_regex(r"^订阅密函(时间|周期)(\d{1,2}):(\d{1,2})$")
 async def dna_mh_push_time(bot: Bot, ev: Event):
-    from ..dna_config.prefix import DNA_PREFIX
+    from ..dna_config.prefix import dna_prefix
 
     msg = [
         "设置推送时间段格式错误，请使用以下格式",
-        f"例如开始时间:17点, 结束时间:23点, 命令: {DNA_PREFIX}订阅密函时间17:23",
+        f"例如开始时间:17点, 结束时间:23点, 命令: {dna_prefix()}订阅密函时间17:23",
     ]
     msg = "\n".join(msg)
 

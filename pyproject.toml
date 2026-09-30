@@ -17,7 +17,7 @@ homepage = "https://github.com/tyql688/DNAUID"
 repository = "https://github.com/tyql688/DNAUID"
 
 [tool.poetry.dependencies]
-python = ">=3.10, <4.0"
+python = ">=3.11, <4.0"
 
 
 [tool.pdm.build]
@@ -29,7 +29,7 @@ build-backend = "pdm.backend"
 [project]
 authors = [{ name = "tyql688", email = "632558678@qq.com" }]
 license = { text = "GPL-3.0-or-later" }
-requires-python = ">=3.10, <4.0"
+requires-python = ">=3.11, <4.0"
 dependencies = [
     "pycryptodome>=3.23.0",
     "websocket-client>=1.9.0",

@@ -1,5 +1,5 @@
 import math
-from typing import List, Literal, Optional
+from typing import Literal
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -9,7 +9,6 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
-from ..utils import dna_api
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_FIRE_BRICK,
@@ -25,6 +24,7 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from ..utils.dna_api import dna_api
 from ..utils.api.model import DNARoleForToolRes
 from ..utils.msgs.notify import (
     dna_not_found,
@@ -60,9 +60,9 @@ class ItemTemp(BaseModel):
     id: int
     name: str
     level: int
-    element_icon: Optional[str] = None
+    element_icon: str | None = None
     icon: str
-    grade_level: Optional[int] = None
+    grade_level: int | None = None
     unlocked: bool = False
 
 
@@ -241,7 +241,7 @@ async def draw_role_info_card(bot: Bot, ev: Event):
 
 
 async def _draw_item(
-    card: Image.Image, start_y: int, items: List[ItemTemp], item_bg: Image.Image, show_none: bool
+    card: Image.Image, start_y: int, items: list[ItemTemp], item_bg: Image.Image, show_none: bool
 ) -> int:
     items = items if show_none else [i for i in items if i.unlocked]
     for index, item in enumerate(items):

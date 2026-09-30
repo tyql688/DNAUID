@@ -1,7 +1,6 @@
 import asyncio
-from typing import List, Optional
 
-from ..utils import dna_api
+from ..utils.dna_api import dna_api
 from ..utils.api.model import DNAMHRes, DNARoleForToolInstanceInfo
 
 # 改进的缓存结构
@@ -21,7 +20,7 @@ def get_cache_config():
 async def get_mh_result(
     timestamp: int,
     is_force: bool = False,
-) -> Optional[List[DNARoleForToolInstanceInfo]]:
+) -> list[DNARoleForToolInstanceInfo] | None:
     global cache
 
     config_cache_enabled = get_cache_config()
@@ -40,7 +39,7 @@ async def get_mh_result(
 
 async def _fetch_and_update_cache(
     timestamp: int,
-) -> Optional[List[DNARoleForToolInstanceInfo]]:
+) -> list[DNARoleForToolInstanceInfo] | None:
     global cache
 
     res = await dna_api.get_mh()

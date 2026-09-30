@@ -1,6 +1,6 @@
 import random
 import asyncio
-from typing import List, Literal
+from typing import Literal
 from datetime import timedelta
 from collections import defaultdict
 
@@ -10,9 +10,9 @@ from gsuid_core.segment import MessageSegment
 from gsuid_core.subscribe import gs_subscribe
 from gsuid_core.utils.database.models import Subscribe
 
-from ..utils import get_datetime
 from .draw_mh import draw_mh_card
 from .cache_mh import get_mh_result
+from ..utils.utils import get_datetime
 from .subscribe_mh import str2list, subscribe_mh_key
 from ..utils.api.model import DNARoleForToolInstanceInfo
 from ..utils.api.mh_map import get_mh_type_name
@@ -37,7 +37,7 @@ async def send_mh_notify():
     await push_pic_notify(mh_result, remaining_seconds)
 
 
-async def push_text_notify(mh_result: List[DNARoleForToolInstanceInfo]):
+async def push_text_notify(mh_result: list[DNARoleForToolInstanceInfo]):
     if not mh_result:
         return
 
@@ -137,7 +137,7 @@ async def push_text_notify(mh_result: List[DNARoleForToolInstanceInfo]):
         if not push_msg:
             continue
 
-        build_push_msg: List[Message] = [
+        build_push_msg: list[Message] = [
             MessageSegment.text("当前订阅密函已刷新"),
             MessageSegment.text("\n"),
         ]
@@ -153,7 +153,7 @@ async def push_text_notify(mh_result: List[DNARoleForToolInstanceInfo]):
         await asyncio.sleep(0.5 + random.randint(1, 3))
 
 
-async def push_text_all_notify(mh_result: List[DNARoleForToolInstanceInfo]):
+async def push_text_all_notify(mh_result: list[DNARoleForToolInstanceInfo]):
     if not mh_result:
         return
 
@@ -200,7 +200,7 @@ async def push_text_all_notify(mh_result: List[DNARoleForToolInstanceInfo]):
         await asyncio.sleep(0.2 + random.uniform(0.1, 0.5))
 
 
-async def push_pic_notify(mh_result: List[DNARoleForToolInstanceInfo], remaining_seconds: int):
+async def push_pic_notify(mh_result: list[DNARoleForToolInstanceInfo], remaining_seconds: int):
     if not mh_result:
         return
 

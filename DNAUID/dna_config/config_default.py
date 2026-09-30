@@ -1,5 +1,3 @@
-from typing import Dict
-
 from gsuid_core.utils.plugins_config.models import (
     GSC,
     GsIntConfig,
@@ -10,7 +8,7 @@ from gsuid_core.utils.plugins_config.models import (
     GsListStrConfig,
 )
 
-CONFIG_DEFAULT: Dict[str, GSC] = {
+CONFIG_DEFAULT: dict[str, GSC] = {
     "DNAAnnGroups": GsDictConfig(
         "推送公告群组",
         "二重螺旋公告推送群组",

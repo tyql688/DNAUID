@@ -1,6 +1,6 @@
 import copy
 from enum import IntEnum
-from typing import Union, Generic, TypeVar, Optional
+from typing import Generic, TypeVar
 
 from pydantic import Field, BaseModel, ConfigDict, computed_field
 
@@ -50,11 +50,11 @@ DAMAGE_BASE_HEADER = {
 
 
 async def get_base_header(
-    dev_code: Optional[str] = None,
+    dev_code: str | None = None,
     is_need_origin: bool = False,
     is_need_refer: bool = False,
     is_h5: bool = False,
-    token: Optional[str] = None,
+    token: str | None = None,
 ):
     """默认获取ios头"""
     header = copy.deepcopy(h5_base_header if is_h5 else android_base_header)
@@ -88,7 +88,7 @@ def get_damage_header(token: str) -> dict[str, str]:
     return header
 
 
-def is_h5(d: Union[str, dict]) -> bool:
+def is_h5(d: str | dict) -> bool:
     if isinstance(d, str):
         return d.lower() == "h5"
     if isinstance(d, dict):
@@ -118,7 +118,7 @@ class DNAApiResp(BaseModel, Generic[T]):
     code: int = Field(0, description="状态码")
     msg: str = Field("", description="消息")
     success: bool = Field(False, description="是否成功")
-    data: Optional[T] = Field(None, description="数据")
+    data: T | None = Field(None, description="数据")
 
     @computed_field
     @property
@@ -131,7 +131,7 @@ class DNAApiResp(BaseModel, Generic[T]):
     @classmethod
     def ok(
         cls,
-        data: Optional[T] = None,
+        data: T | None = None,
         msg: str = "请求成功",
         code: int = RespCode.OK_ZERO,
     ) -> "DNAApiResp[T]":

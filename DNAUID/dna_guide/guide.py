@@ -1,4 +1,5 @@
 import re
+import asyncio
 from pathlib import Path
 
 from gsuid_core.bot import Bot
@@ -23,33 +24,17 @@ async def get_guide(bot: Bot, ev: Event, char_name: str) -> None:
 
     logger.debug(f"[二重螺旋] 开始获取{char_name}攻略")
 
-    config = DNAConfig.get_config("Guide").data
-
-    imgs_result: list[str] = []
+    config: list[str] = DNAConfig.get_config("Guide").data
     guide_name = "暗主" if char_name in {"男主-暗", "女主-暗"} else char_name
     pattern = re.compile(re.escape(guide_name), re.IGNORECASE)
     if "all" in config:
-        for guide_path in GUIDE_PATH.iterdir():
-            imgs = await get_guide_pic(
-                guide_path,
-                pattern,
-                guide_path.name,
-            )
-            if len(imgs) == 0:
-                continue
-            imgs_result.extend(imgs)
+        guide_paths = await asyncio.to_thread(lambda: list(GUIDE_PATH.iterdir()))
     else:
-        for guide_name in config:
-            guide_path = GUIDE_PATH / guide_name
+        guide_paths = [GUIDE_PATH / name for name in config]
 
-            imgs = await get_guide_pic(
-                guide_path,
-                pattern,
-                guide_path.name,
-            )
-            if len(imgs) == 0:
-                continue
-            imgs_result.extend(imgs)
+    imgs_result: list[str] = []
+    for guide_path in guide_paths:
+        imgs_result.extend(await get_guide_pic(guide_path, pattern, guide_path.name))
 
     if len(imgs_result) == 0:
         await dna_not_found(bot, ev, f"角色【{char_name}】攻略")
@@ -58,39 +43,31 @@ async def get_guide(bot: Bot, ev: Event, char_name: str) -> None:
     await send_guide(config, imgs_result, bot)
 
 
-async def get_guide_pic(guide_path: Path, pattern: re.Pattern[str], guide_author: str):
-    imgs = []
+def _match_guide_files(guide_path: Path, pattern: re.Pattern[str]) -> list[Path] | None:
     if not guide_path.is_dir():
+        return None
+    return [file for file in guide_path.iterdir() if pattern.search(file.name)]
+
+
+async def get_guide_pic(guide_path: Path, pattern: re.Pattern[str], guide_author: str) -> list[str]:
+    files = await asyncio.to_thread(_match_guide_files, guide_path, pattern)
+    if files is None:
         logger.warning(f"[二重螺旋] 攻略路径错误 {guide_path}")
-        return imgs
+        return []
 
-    if not guide_path.exists():
-        logger.warning(f"[二重螺旋] 攻略路径不存在 {guide_path}")
-        return imgs
+    imgs: list[str] = []
+    for file in files:
+        try:
+            imgs.append(await convert_img(file))
+        except Exception as e:
+            logger.warning(f"[二重螺旋] 攻略图片读取失败 {file}: {e!r}")
 
-    for file in guide_path.iterdir():
-        if not pattern.search(file.name):
-            continue
-        imgs.extend(await process_images_new(file))
-
-    if len(imgs) > 0:
+    if imgs:
         imgs.insert(0, f"攻略作者：{guide_author}")
-
     return imgs
 
 
-async def process_images_new(_dir: Path):
-    imgs = []
-    try:
-        img = await convert_img(_dir)
-        imgs.append(img)
-    except Exception as e:
-        logger.warning(f"攻略图片读取失败 {_dir}: {e}")
-    return imgs
-
-
-async def send_guide(config, imgs: list[str], bot: Bot):
-    # 处理发送逻辑
+async def send_guide(config: list[str], imgs: list[str], bot: Bot) -> None:
     if "all" in config:
         await bot.send(imgs)
     elif len(imgs) == 2:

@@ -3,7 +3,7 @@ import json
 import time
 import base64
 import threading
-from typing import Any, Optional
+import contextlib
 from collections import OrderedDict
 
 import websocket
@@ -25,6 +25,12 @@ def get_ws_wait_time() -> int:
     return DNAConfig.get_config("WebSocketWaitTime").data or 5
 
 
+def _close_quietly(ws: websocket.WebSocketApp) -> None:
+    # 连接可能已被对端关闭，关闭失败不影响连接池回收
+    with contextlib.suppress(websocket.WebSocketException, OSError):
+        ws.close()
+
+
 class WebSocketManager:
     """WebSocket 连接池管理器
 
@@ -37,23 +43,23 @@ class WebSocketManager:
 
     def __init__(self):
         # _pool 存储 (ws, timestamp) 元组
-        self._pool: OrderedDict[tuple[str, str], tuple[Any, float]] = OrderedDict()
+        self._pool: OrderedDict[tuple[str, str], tuple[websocket.WebSocketApp, float]] = OrderedDict()
         self._lock = threading.Lock()
         self._ready_events: dict[tuple[str, str], threading.Event] = {}
 
     def _extract_user_id(self, token: str) -> str:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return ""
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        # token 是外部输入：base64 / JSON / UTF-8 解码失败都是 ValueError 子类
         try:
-            if len(parts := token.split(".")) >= 2:
-                payload = parts[1]
-                if padding := len(payload) % 4:
-                    payload += "=" * (4 - padding)
-                if data := json.loads(base64.urlsafe_b64decode(payload)):
-                    return str(data.get("userId", ""))
-        except Exception:
-            pass
-        return ""
+            data = json.loads(base64.urlsafe_b64decode(payload))
+        except ValueError:
+            return ""
+        return str(data["userId"]) if isinstance(data, dict) and "userId" in data else ""
 
-    def _start_heartbeat(self, ws: Any, user_id: str):
+    def _start_heartbeat(self, ws: websocket.WebSocketApp, user_id: str) -> None:
         def heartbeat_loop():
             while True:
                 time.sleep(self.HEARTBEAT_INTERVAL)
@@ -67,7 +73,9 @@ class WebSocketManager:
 
         threading.Thread(target=heartbeat_loop, daemon=True).start()
 
-    def _create_connection(self, token: str, dev_code: str, ready_event: threading.Event) -> Optional[Any]:
+    def _create_connection(
+        self, token: str, dev_code: str, ready_event: threading.Event
+    ) -> websocket.WebSocketApp | None:
         try:
             key = (token, dev_code)
             user_id = self._extract_user_id(token)
@@ -82,10 +90,7 @@ class WebSocketManager:
                 logger.debug(f"[DNA WebSocket] received message: {message}")
                 with self._lock:
                     if (item := self._pool.get(key)) and time.time() - item[1] > get_ws_continue_time():
-                        try:
-                            ws.close()
-                        except Exception:
-                            pass
+                        _close_quietly(ws)
 
             def on_error(ws, error):
                 logger.debug(f"[DNA WebSocket] on_error is called (error: {error})")
@@ -134,12 +139,11 @@ class WebSocketManager:
 
     def _cleanup_connection(self, key: tuple[str, str]):
         if item := self._pool.pop(key, None):
-            try:
-                item[0].close()
-            except Exception:
-                pass
+            _close_quietly(item[0])
 
-    def get_connection(self, token: str, dev_code: str, wait_ready: bool = False, timeout: float = 5) -> Optional[Any]:
+    def get_connection(
+        self, token: str, dev_code: str, wait_ready: bool = False, timeout: float = 5
+    ) -> websocket.WebSocketApp | None:
         if not token or not dev_code:
             return None
         key = (token, dev_code)
@@ -196,30 +200,9 @@ class WebSocketManager:
 
         return ws
 
-    def get_active_tokens(self, limit: Optional[int] = 3) -> list[tuple[str, str]]:
-        with self._lock:
-            current_time = time.time()
-            active_tokens = []
-            for key, item in self._pool.items():
-                if current_time - item[1] <= get_ws_continue_time():
-                    token, dev_code = key
-                    active_tokens.append((token, dev_code))
-                    if limit is not None and len(active_tokens) >= limit:
-                        break
-            return active_tokens
-
-    def close_all(self):
-        with self._lock:
-            while self._pool:
-                key, item = self._pool.popitem()
-                try:
-                    item[0].close()
-                except Exception:
-                    pass
-
 
 # 全局单例
-_ws_manager: Optional[WebSocketManager] = None
+_ws_manager: WebSocketManager | None = None
 
 
 def get_ws_manager() -> WebSocketManager:

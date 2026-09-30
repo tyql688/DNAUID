@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -18,7 +18,7 @@ TEXT_PATH = Path(__file__).parent / "texture2d"
 time_icon = Image.open(TEXT_PATH / "time_icon.png")
 
 
-class TimeType(str, Enum):
+class TimeType(StrEnum):
     MOLING = "moling"
     MIHAN = "mihan"
     ZHOUBEN = "zhouben"
@@ -317,7 +317,7 @@ async def draw_calendar_img(ev: Event):
 
 async def draw_banner(img):
     banner_bg = Image.open(TEXT_PATH / "banner_bg.webp")
-    banner_bg = banner_bg.resize((1200, 675))  # type: ignore
+    banner_bg = banner_bg.resize((1200, 675))
     banner_mask = Image.open(TEXT_PATH / "banner_mask.png")
     banner_bg = crop_center_img(banner_bg, banner_mask.size[0], banner_mask.size[1])
 

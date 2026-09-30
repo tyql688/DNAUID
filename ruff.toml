@@ -1,8 +1,8 @@
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 
 [lint]
-select = ["E", "F", "I", "W"]
+select = ["E", "F", "I", "W", "UP", "ASYNC"]
 ignore = ["E501"]
 
 [lint.isort]

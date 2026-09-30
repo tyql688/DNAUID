@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any
 from pathlib import Path
 
 from ..utils.api.model import RoleShowForTool
@@ -10,25 +11,22 @@ from ..utils.resource.RESOURCE_PATH import (
     WEAPON_ALIAS_PATH,
 )
 
-# 别名分三层：
-# 1. 内置别名：随插件发布（进 git），位于 dna_alias/alias/，只读
-# 2. 自动别名：游戏接口重建，写 data 目录（CHAR_ALIAS_PATH / WEAPON_ALIAS_PATH）
-# 3. 自定义别名：添加别名命令写入，与自动别名同文件
-# 运行时合并为一个视图，所有查询走合并后的 char_alias_data / weapon_alias_data
+# 内置别名随插件发布只读；自动别名（游戏接口重建）与自定义别名同写 data 目录；
+# 三层在运行时合并，所有查询走 char_alias_data / weapon_alias_data
 BUILTIN_ALIAS_PATH = Path(__file__).parent.parent / "dna_alias" / "alias"
 BUILTIN_CHAR_ALIAS_PATH = BUILTIN_ALIAS_PATH / "char_alias.json"
 BUILTIN_WEAPON_ALIAS_PATH = BUILTIN_ALIAS_PATH / "weapon_alias.json"
 
 # 内置层（只读）
-builtin_char_alias_data: Dict[str, List[str]] = {}
-builtin_weapon_alias_data: Dict[str, List[str]] = {}
+builtin_char_alias_data: dict[str, list[str]] = {}
+builtin_weapon_alias_data: dict[str, list[str]] = {}
 # 合并视图（内置 + 自动 + 自定义）
-char_alias_data: Dict[str, List[str]] = {}
-weapon_alias_data: Dict[str, List[str]] = {}
-id2name_data: Dict[str, str] = {}
+char_alias_data: dict[str, list[str]] = {}
+weapon_alias_data: dict[str, list[str]] = {}
+id2name_data: dict[str, str] = {}
 
 
-def _read_alias_data(alias_path: Path, ensure_file: bool = False) -> Dict[str, Any]:
+def _read_alias_data(alias_path: Path, ensure_file: bool = False) -> dict[str, Any]:
     try:
         data = json.loads(alias_path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
@@ -38,7 +36,7 @@ def _read_alias_data(alias_path: Path, ensure_file: bool = False) -> Dict[str, A
         return {}
 
 
-def _merge_alias_data(builtin: Dict[str, List[str]], extra: Dict[str, List[str]]) -> Dict[str, List[str]]:
+def _merge_alias_data(builtin: dict[str, list[str]], extra: dict[str, list[str]]) -> dict[str, list[str]]:
     """内置层在前，data 层（自动+自定义）去重追加"""
     merged = {name: list(aliases) for name, aliases in builtin.items()}
     for name, aliases in extra.items():
@@ -47,15 +45,19 @@ def _merge_alias_data(builtin: Dict[str, List[str]], extra: Dict[str, List[str]]
     return merged
 
 
-def _fill_auto_alias(metadatas: List[Dict[str, Any]], alias_data: Dict[str, List[str]]) -> None:
+def _fill_auto_alias(metadatas: list[dict[str, Any]], alias_data: dict[str, list[str]]) -> None:
     for meta in metadatas:
         name = meta["name"]
         if name not in alias_data or len(alias_data[name]) == 0:
             alias_data[name] = [name]
 
 
-async def rebuild_name_convert(role_show: RoleShowForTool, is_force: bool = False):
+async def rebuild_name_convert(role_show: RoleShowForTool, is_force: bool = False) -> None:
     """用游戏接口的角色/武器列表重建自动别名层（只写 data 目录，不动内置层）"""
+    await asyncio.to_thread(_rebuild_name_convert, role_show, is_force)
+
+
+def _rebuild_name_convert(role_show: RoleShowForTool, is_force: bool) -> None:
     char_alias = {} if is_force else _read_alias_data(CHAR_ALIAS_PATH)
     weapon_alias = {} if is_force else _read_alias_data(WEAPON_ALIAS_PATH)
 
@@ -65,20 +67,15 @@ async def rebuild_name_convert(role_show: RoleShowForTool, is_force: bool = Fals
     _fill_auto_alias(weapon_metadatas, weapon_alias)
     id2name = {str(i["id"]): i["name"] for i in role_metadatas + weapon_metadatas}
 
-    with open(CHAR_ALIAS_PATH, "w", encoding="utf-8") as f:
-        json.dump(char_alias, f, ensure_ascii=False, indent=2)
-    with open(WEAPON_ALIAS_PATH, "w", encoding="utf-8") as f:
-        json.dump(weapon_alias, f, ensure_ascii=False, indent=2)
-    with open(ID2NAME_PATH, "w", encoding="utf-8") as f:
-        json.dump(id2name, f, ensure_ascii=False, indent=2)
+    for path, data in ((CHAR_ALIAS_PATH, char_alias), (WEAPON_ALIAS_PATH, weapon_alias), (ID2NAME_PATH, id2name)):
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     load_alias_data()
 
 
 async def refresh_name_convert(is_force: bool = False):
-    from ..utils import dna_api
-    from ..utils.api.model import DNARoleForToolRes
-    from ..utils.name_convert import rebuild_name_convert
+    from .dna_api import dna_api
+    from .api.model import DNARoleForToolRes
 
     dna_user = await dna_api.get_random_dna_user()
     if not dna_user:
@@ -107,13 +104,13 @@ def load_alias_data():
 load_alias_data()
 
 
-def builtin_alias_list(std_name: str, is_weapon: bool = False) -> List[str]:
+def builtin_alias_list(std_name: str, is_weapon: bool = False) -> list[str]:
     """指定正名的内置别名列表（正名需已通过 alias_to_*_name 解析）"""
     data = builtin_weapon_alias_data if is_weapon else builtin_char_alias_data
     return data.get(std_name, [])
 
 
-def alias_to_char_name(char_name: Optional[str]) -> Optional[str]:
+def alias_to_char_name(char_name: str | None) -> str | None:
     if not char_name:
         return None
     if char_name in MASTER_CHAR_ALIAS_TO_NAME:
@@ -124,14 +121,14 @@ def alias_to_char_name(char_name: Optional[str]) -> Optional[str]:
     return None
 
 
-def alias_to_char_name_list(char_name: str) -> List[str]:
+def alias_to_char_name_list(char_name: str) -> list[str]:
     for i in char_alias_data:
         if (char_name in i) or (char_name in char_alias_data[i]):
             return char_alias_data[i]
     return []
 
 
-def char_name_to_char_id(char_name: Optional[str]) -> Optional[str]:
+def char_name_to_char_id(char_name: str | None) -> str | None:
     char_name = alias_to_char_name(char_name)
     if char_name in MASTER_CHAR_ID_BY_NAME:
         return MASTER_CHAR_ID_BY_NAME[char_name]
@@ -158,16 +155,16 @@ def alias_to_weapon_name(weapon_name: str) -> str:
     return weapon_name
 
 
-def alias_to_weapon_name_list(weapon_name: str) -> List[str]:
+def alias_to_weapon_name_list(weapon_name: str) -> list[str]:
     for i in weapon_alias_data:
         if (weapon_name in i) or (weapon_name in weapon_alias_data[i]):
             return weapon_alias_data[i]
     return []
 
 
-def all_weapon_list() -> List[str]:
+def all_weapon_list() -> list[str]:
     return list(weapon_alias_data.keys())
 
 
-def all_char_list() -> List[str]:
+def all_char_list() -> list[str]:
     return list(char_alias_data.keys())

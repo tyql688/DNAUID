@@ -7,7 +7,6 @@ from gsuid_core.bot import Bot
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
-from ..utils import dna_api
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_PALE_GOLDENROD,
@@ -17,6 +16,7 @@ from ..utils.image import (
     download_pic_from_url,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from ..utils.dna_api import dna_api
 from ..utils.api.model import (
     DNARoleForToolRes,
     DNAWeeklyReportItem,

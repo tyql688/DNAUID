@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..utils import dna_api
+from ..utils.dna_api import dna_api
 from ..utils.api.model import Mode, RoleDetail, WeaponDetail
 from ..utils.database.models import DNAUser
 from ..utils.api.damage_model import (

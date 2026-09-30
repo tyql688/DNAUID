@@ -7,7 +7,7 @@ from typing import Any
 from datetime import datetime
 from collections.abc import Iterable
 
-from ..utils import dna_api
+from ..utils.dna_api import dna_api
 
 POST_DETAIL_URL_TPL = "https://dnabbs.yingxiong.com/pc/detail/{post_id}"
 

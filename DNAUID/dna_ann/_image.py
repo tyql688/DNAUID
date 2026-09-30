@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from urllib.parse import quote_plus
 
 from PIL import Image, ImageDraw, ImageFont
 
-from gsuid_core.utils.download_resource.download_file import download
-
+from ..utils.image import download_pic_from_url
 from ..utils.resource.RESOURCE_PATH import ANN_CARD_PATH
 
 Color = tuple[int, int, int] | tuple[int, int, int, int]
@@ -26,19 +24,10 @@ def cache_name(*parts: object, ext: str = "png") -> str:
     return f"{hashlib.sha1(raw.encode('utf-8')).hexdigest()}.{ext}"
 
 
-async def fetch_image(path: Path, pic_url: str, *, name: str | None = None) -> Image.Image:
-    path.mkdir(parents=True, exist_ok=True)
-    file_name = name or pic_url.split("/")[-1]
-    target = path / file_name
-    if not target.exists():
-        await download(pic_url, path, file_name, tag="[DNA]")
-    return Image.open(target).convert("RGBA")
-
-
 async def load_qr_code(url: str, size: int = 220) -> Image.Image | None:
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size={size}x{size}&data={quote_plus(url)}"
     try:
-        image = await fetch_image(QR_CACHE_PATH, qr_url, name=cache_name("qr", url, size))
+        image = await download_pic_from_url(QR_CACHE_PATH, qr_url, name=cache_name("qr", url, size))
     except OSError:
         return None
     return image.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)

@@ -1,4 +1,4 @@
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import Field, BaseModel, model_validator
 
@@ -11,19 +11,19 @@ class UserGame(BaseModel):
 
 
 class DNALoginRes(BaseModel):
-    applyCancel: Optional[int] = Field(description="applyCancel", default=0)
-    gender: Optional[int] = Field(description="gender", default=0)
-    signature: Optional[str] = Field(description="signature", default="")
-    headUrl: Optional[str] = Field(description="headUrl", default="")
-    userName: Optional[str] = Field(description="userName", default="")
-    dNum: Optional[str] = Field(description="dNum", default="")
+    applyCancel: int | None = Field(description="applyCancel", default=0)
+    gender: int | None = Field(description="gender", default=0)
+    signature: str | None = Field(description="signature", default="")
+    headUrl: str | None = Field(description="headUrl", default="")
+    userName: str | None = Field(description="userName", default="")
+    dNum: str | None = Field(description="dNum", default="")
     userId: str = Field(description="userId")
     isOfficial: int = Field(description="isOfficial", default=0)
     token: str = Field(exclude=True, description="token")
-    userGameList: List[UserGame] = Field(description="userGameList")
+    userGameList: list[UserGame] = Field(description="userGameList")
     isRegister: int = Field(description="isRegister", default=0)
-    status: Optional[int] = Field(description="status", default=0)
-    isComplete: Optional[int] = Field(description="isComplete 是否完成绑定 0: 未绑定, 1: 已绑定", default=0)
+    status: int | None = Field(description="status", default=0)
+    isComplete: int | None = Field(description="isComplete 是否完成绑定 0: 未绑定, 1: 已绑定", default=0)
     refreshToken: str = Field(exclude=True, description="refreshToken")
 
 
@@ -33,23 +33,23 @@ class DNATokenPayload(BaseModel):
 
 class DNARoleShowVo(BaseModel):
     roleId: str = Field(description="roleId")
-    headUrl: Optional[str] = Field(description="headUrl")
-    level: Optional[int] = Field(description="level")
-    roleName: Optional[str] = Field(description="roleName")
-    isDefault: Optional[int] = Field(description="isDefault")
-    roleRegisterTime: Optional[str] = Field(description="roleRegisterTime")
-    boundType: Optional[int] = Field(description="boundType")
+    headUrl: str | None = Field(description="headUrl")
+    level: int | None = Field(description="level")
+    roleName: str | None = Field(description="roleName")
+    isDefault: int | None = Field(description="isDefault")
+    roleRegisterTime: str | None = Field(description="roleRegisterTime")
+    boundType: int | None = Field(description="boundType")
     roleBoundId: str = Field(description="roleBoundId")
 
 
 class DNARole(BaseModel):
     gameName: str = Field(description="gameName")
-    showVoList: List[DNARoleShowVo] = Field(description="showVoList")
+    showVoList: list[DNARoleShowVo] = Field(description="showVoList")
     gameId: int = Field(description="gameId")
 
 
 class DNARoleListRes(BaseModel):
-    roles: List[DNARole] = Field(description="roles")
+    roles: list[DNARole] = Field(description="roles")
 
 
 class DNARoleForToolInstance(BaseModel):
@@ -58,23 +58,23 @@ class DNARoleForToolInstance(BaseModel):
 
 
 class DNARoleForToolInstanceInfo(BaseModel):
-    instances: List[DNARoleForToolInstance] = Field(description="instances")
+    instances: list[DNARoleForToolInstance] = Field(description="instances")
 
-    mh_type: Optional[Literal["role", "weapon", "mzx"]] = Field(description="mh_type", default=None)
+    mh_type: Literal["role", "weapon", "mzx"] | None = Field(description="mh_type", default=None)
 
 
 class DraftDoingInfo(BaseModel):
     draftCompleteNum: int = Field(description="draftCompleteNum")
     draftDoingNum: int = Field(description="draftDoingNum")
     # 空槽 / 异常状态时后端可能不返回 endTime / productName / productId
-    endTime: Optional[str] = Field(description="结束时间", default=None)
-    productId: Optional[int] = Field(description="productId", default=None)
-    productName: Optional[str] = Field(description="productName", default=None)
+    endTime: str | None = Field(description="结束时间", default=None)
+    productId: int | None = Field(description="productId", default=None)
+    productName: str | None = Field(description="productName", default=None)
     startTime: str = Field(description="开始时间")
 
 
 class DraftInfo(BaseModel):
-    draftDoingInfo: Optional[List[DraftDoingInfo]] = Field(description="draftDoingInfo", default=None)
+    draftDoingInfo: list[DraftDoingInfo] | None = Field(description="draftDoingInfo", default=None)
     draftDoingNum: int = Field(description="正在做的锻造")
     draftMaxNum: int = Field(description="最大锻造数量")
 
@@ -89,13 +89,13 @@ class DNAWeeklyReportItem(BaseModel):
 
 class DNAWeeklyReportCategory(BaseModel):
     categoryName: str = Field(description="分类名")
-    isBase: Optional[bool] = Field(description="是否基础资源", default=False)
-    items: List[DNAWeeklyReportItem] = Field(description="资源列表")
+    isBase: bool | None = Field(description="是否基础资源", default=False)
+    items: list[DNAWeeklyReportItem] = Field(description="资源列表")
     type: int = Field(description="分类类型")
 
 
 class DNAItemWeeklyReportRes(BaseModel):
-    categories: List[DNAWeeklyReportCategory] = Field(description="分类资源")
+    categories: list[DNAWeeklyReportCategory] = Field(description="分类资源")
     startDate: str = Field(description="周开始日期 YYYYMMDD")
     endDate: str = Field(description="周结束日期 YYYYMMDD")
     weekType: int = Field(description="1=本周 2=上周")
@@ -114,18 +114,18 @@ class DNARoleShortNoteRes(BaseModel):
 
 
 class WeaponInsForTool(BaseModel):
-    elementIcon: Optional[str] = Field(description="武器类型图标", default=None)
+    elementIcon: str | None = Field(description="武器类型图标", default=None)
     icon: str = Field(description="武器图标")
     level: int = Field(description="武器等级")
     name: str = Field(description="武器名称")
     unLocked: bool = Field(description="是否解锁")
-    weaponEid: Optional[str] = Field(description="weaponEid", default=None)
+    weaponEid: str | None = Field(description="weaponEid", default=None)
     weaponId: int = Field(description="weaponId")
     skillLevel: int = Field(description="武器精炼等级", default=0)
 
 
 class RoleInsForTool(BaseModel):
-    charEid: Optional[str] = Field(description="charEid", default=None)
+    charEid: str | None = Field(description="charEid", default=None)
     charId: int = Field(description="charId")
     elementIcon: str = Field(description="元素图标")
     gradeLevel: int = Field(description="命座等级")
@@ -145,11 +145,11 @@ class RoleAchv(BaseModel):
 
 
 class RoleShowForTool(BaseModel):
-    roleChars: List[RoleInsForTool] = Field(description="角色列表")
-    langRangeWeapons: List[WeaponInsForTool] = Field(description="武器列表")
-    closeWeapons: List[WeaponInsForTool] = Field(description="武器列表")
+    roleChars: list[RoleInsForTool] = Field(description="角色列表")
+    langRangeWeapons: list[WeaponInsForTool] = Field(description="武器列表")
+    closeWeapons: list[WeaponInsForTool] = Field(description="武器列表")
     level: int = Field(description="等级")
-    params: List[RoleAchievement] = Field(description="成就列表")
+    params: list[RoleAchievement] = Field(description="成就列表")
     roleId: str = Field(description="角色id")
     roleName: str = Field(description="角色名称")
     roleAchv: RoleAchv = Field(description="成就信息")
@@ -165,7 +165,7 @@ class DNARoleForToolRes(BaseModel):
 
 
 class DNAMHRes(BaseModel):
-    instanceInfo: List[DNARoleForToolInstanceInfo] = Field(description="instanceInfo")
+    instanceInfo: list[DNARoleForToolInstanceInfo] = Field(description="instanceInfo")
 
     @model_validator(mode="before")
     @classmethod
@@ -190,7 +190,7 @@ class RoleAttribute(BaseModel):
     skillRange: str = Field(description="技能范围")
     strongValue: str = Field(description="strongValue")
     skillIntensity: str = Field(description="技能威力")
-    weaponTags: List[Optional[str]] = Field(description="武器精通")
+    weaponTags: list[str | None] = Field(description="武器精通")
     defense: int = Field(description="防御", alias="def")
     enmityValue: str = Field(description="enmityValue")
     skillEfficiency: str = Field(description="技能效益")
@@ -215,29 +215,29 @@ class RoleTrace(BaseModel):
 
 class Mode(BaseModel):
     id: int = Field(description="id 没佩戴为-1")
-    icon: Optional[str] = Field(description="图标", default=None)
-    quality: Optional[int] = Field(description="质量", default=None)
-    name: Optional[str] = Field(description="名称", default=None)
-    level: Optional[int] = Field(description="等级", default=0)
+    icon: str | None = Field(description="图标", default=None)
+    quality: int | None = Field(description="质量", default=None)
+    name: str | None = Field(description="名称", default=None)
+    level: int | None = Field(description="等级", default=0)
 
 
 class RoleDetail(BaseModel):
     attribute: RoleAttribute = Field(description="角色属性")
-    skills: List[RoleSkill] = Field(description="角色技能")
+    skills: list[RoleSkill] = Field(description="角色技能")
     paint: str = Field(description="立绘")
     charId: int = Field(description="角色配置ID")
     charName: str = Field(description="角色名称")
     elementIcon: str = Field(description="元素图标")
-    traces: List[RoleTrace] = Field(description="溯源")
+    traces: list[RoleTrace] = Field(description="溯源")
     currentVolume: int = Field(description="当前魔之楔")
     sumVolume: int = Field(description="最大魔之楔")
     level: int = Field(description="角色等级")
     icon: str = Field(description="角色头像")
     gradeLevel: int = Field(description="溯源等级 0-6")
     elementName: str = Field(description="元素名称")
-    modes: List[Mode] = Field(description="mode")
-    conWeaponEid: Optional[str] = Field(description="同律武器eid", default=None)
-    conWeaponId: Optional[int] = Field(description="同律武器id", default=None)
+    modes: list[Mode] = Field(description="mode")
+    conWeaponEid: str | None = Field(description="同律武器eid", default=None)
+    conWeaponId: int | None = Field(description="同律武器id", default=None)
 
 
 class DNARoleDetailRes(BaseModel):
@@ -260,7 +260,7 @@ class WeaponDetail(BaseModel):
     icon: str = Field(description="武器头像")
     id: int = Field(description="武器id")
     level: int = Field(description="武器等级")
-    modes: List[Mode] = Field(description="mode")
+    modes: list[Mode] = Field(description="mode")
     name: str = Field(description="武器名称")
     skillLevel: int = Field(description="武器精炼等级")
     sumVolume: int = Field(description="最大魔之楔")
@@ -306,12 +306,12 @@ class DNACaSignRoleInfo(BaseModel):
 class DNACalendarSignRes(BaseModel):
     # 当日尚未签到 / 账号未绑定角色时, 后端可能只回 period + dayAward + continueAward,
     # 顶层签到状态字段和 roleInfo 全部省略 -> 这里允许它们缺失, 由调用方判空再决定走签到还是渲染.
-    todaySignin: Optional[bool] = Field(description="todaySignin", default=None)
-    userGoldNum: Optional[int] = Field(description="userGoldNum", default=None)
-    dayAward: List[DNADayAward] = Field(description="dayAward", default_factory=list)
-    signinTime: Optional[int] = Field(description="signinTime", default=None)
+    todaySignin: bool | None = Field(description="todaySignin", default=None)
+    userGoldNum: int | None = Field(description="userGoldNum", default=None)
+    dayAward: list[DNADayAward] = Field(description="dayAward", default_factory=list)
+    signinTime: int | None = Field(description="signinTime", default=None)
     period: DNACaSignPeriod = Field(description="period")
-    roleInfo: Optional[DNACaSignRoleInfo] = Field(description="roleInfo", default=None)
+    roleInfo: DNACaSignRoleInfo | None = Field(description="roleInfo", default=None)
 
 
 class DNABBSTask(BaseModel):
@@ -324,7 +324,7 @@ class DNABBSTask(BaseModel):
     gainGold: int = Field(description="获取金币")
 
     # 添加markName字段
-    markName: Optional[str] = Field(default=None, description="任务标识名")
+    markName: str | None = Field(default=None, description="任务标识名")
 
     def __init__(self, **data):
         remark = data.get("remark", "")
@@ -333,7 +333,7 @@ class DNABBSTask(BaseModel):
 
 
 class DNATaskProcessRes(BaseModel):
-    dailyTask: List[DNABBSTask] = Field(description="dailyTask")
+    dailyTask: list[DNABBSTask] = Field(description="dailyTask")
     # growTask: List[DNABBSTask] = Field(description="growTask")
 
 
@@ -342,4 +342,4 @@ class WikiDetail(BaseModel):
 
 
 class DNAWikiRes(BaseModel):
-    wikis: List[WikiDetail] = Field(description="wikis")
+    wikis: list[WikiDetail] = Field(description="wikis")

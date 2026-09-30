@@ -1,5 +1,4 @@
 import random
-from typing import List, Optional
 from pathlib import Path
 from datetime import timedelta
 
@@ -10,7 +9,6 @@ from gsuid_core.logger import logger
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
-from ..utils import get_datetime
 from .cache_mh import get_mh_result
 from ..utils.image import (
     COLOR_BLUE,
@@ -21,6 +19,7 @@ from ..utils.image import (
     COLOR_SADDLE_BROWN,
     add_footer,
 )
+from ..utils.utils import get_datetime
 from .subscribe_mh import get_mh_subscribe_list
 from ..utils.api.model import DNARoleForToolInstanceInfo
 from ..utils.api.mh_map import get_mh_type_name
@@ -58,9 +57,9 @@ async def draw_mh(bot: Bot, ev: Event):
 
 
 async def draw_mh_simple(
-    mh_result: List[DNARoleForToolInstanceInfo],
+    mh_result: list[DNARoleForToolInstanceInfo],
     remaining_seconds: int,
-    subscribe_list: Optional[List[str]] = None,
+    subscribe_list: list[str] | None = None,
 ):
     CARD_W, GUTTER, ICON_S = 320, 20, 256
 
@@ -103,9 +102,9 @@ async def draw_mh_simple(
 
 
 async def draw_mh_card(
-    mh_result: List[DNARoleForToolInstanceInfo],
+    mh_result: list[DNARoleForToolInstanceInfo],
     remaining_seconds: int,
-    subscribe_list: Optional[List[str]] = None,
+    subscribe_list: list[str] | None = None,
 ):
     card = Image.open(TEXT_PATH / random.choice(bg_list)).convert("RGBA")
 
@@ -129,7 +128,6 @@ async def draw_mh_card(
                 ins_color = COLOR_GREEN
             else:
                 ins_color = COLOR_WHITE
-            # bar_bg_draw.text((70, 10), ins.name, ins_color, dna_font_36)
             bar_bg_draw.text((180, 27), ins.name, ins_color, dna_font_36, "mm")
 
             mh_card.alpha_composite(bar_bg_temp, (70, j * 80 + 420))

@@ -9,7 +9,6 @@ from gsuid_core.logger import logger
 from gsuid_core.models import Event
 from gsuid_core.utils.image.convert import convert_img
 
-from ..utils import dna_api
 from .loadout import (
     WeaponNotFoundError,
     WeaponNotUnlockedError,
@@ -35,6 +34,7 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from ..utils.dna_api import dna_api
 from .damage_service import RoleDamageBuild, calculate_role_damage
 from .damage_renderer import draw_role_damage_section
 from .weapon_renderer import draw_weapon_detail_section
