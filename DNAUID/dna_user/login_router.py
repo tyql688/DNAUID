@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from enum import StrEnum
 from pathlib import Path
 
 import async_timeout
@@ -40,6 +41,12 @@ from ..utils.resource.RESOURCE_PATH import DNA_TEMPLATES
 cache = TimedCache(timeout=600, maxsize=10)
 
 
+class LoginMode(StrEnum):
+    APP = "app"
+    WEB = "web"
+    JSON = "json"
+
+
 class LoginSubmission(BaseModel):
     channel: LoginChannel = Field(description="登录来源")
     mobile: str = Field(description="登录手机号")
@@ -55,6 +62,7 @@ class LoginSession(BaseModel):
     web_dev_code: str | None = Field(default=None, description="Web 设备码")
     web_mobile: str | None = Field(default=None, description="已成功发码的手机号")
     submission: LoginSubmission | None = Field(default=None, description="待处理的登录提交")
+    json_payload: str | None = Field(default=None, description="待处理的 JSON 凭据")
 
 
 class LoginSubmitParams(BaseModel):
@@ -75,15 +83,20 @@ class WebSmsCodeParams(BaseModel):
     v_json: str = Field(alias="vJson", description="CAPTCHA 验证结果")
 
 
-class HildaCredentials(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class JsonLoginParams(BaseModel):
+    auth: str = Field(description="登录会话标识")
+    payload: str = Field(description="粘贴的 JSON 凭据")
 
-    channel: LoginChannel = Field(description="登录来源")
+
+class HildaCredentials(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    channel: LoginChannel = Field(default=LoginChannel.APP, description="登录来源")
     token: str = Field(min_length=1, description="登录 token")
     dev_code: str = Field(alias="devCode", min_length=1, description="登录设备码")
-    d_num: str = Field(alias="dNum", description="设备编号")
+    d_num: str = Field(default="", alias="dNum", description="设备编号")
     refresh_token: str = Field(alias="refreshToken", description="刷新 token")
-    version: str = Field(min_length=1, description="希尔妲 APK 版本")
+    version: str | None = Field(default=None, description="希尔妲 APK 版本")
 
     def to_login_credentials(self) -> LoginCredentials:
         return LoginCredentials(
@@ -119,7 +132,7 @@ async def hilda_credentials_login(bot: Bot, ev: Event, payload: str) -> None:
     try:
         credentials = HildaCredentials.model_validate_json(payload).to_login_credentials()
     except (ValidationError, ValueError):
-        await send_dna_notify(bot, ev, "希尔妲凭据格式无效")
+        await send_dna_notify(bot, ev, "JSON凭据格式无效")
         return
 
     login_service = DNALoginService(bot, ev)
@@ -262,6 +275,14 @@ async def page_login_local(bot: Bot, ev: Event, url: str) -> None:
                     return
                 if not isinstance(current_session, LoginSession):
                     raise TypeError("登录会话类型错误")
+                if current_session.json_payload is not None:
+                    cache.delete(login_auth)
+                    await hilda_credentials_login(
+                        bot,
+                        ev,
+                        current_session.json_payload,
+                    )
+                    return
                 if current_session.submission is not None:
                     cache.delete(login_auth)
                     submission = current_session.submission
@@ -319,7 +340,7 @@ async def code_login(
 async def _render_login_page(
     auth: str,
     template_name: str,
-    login_mode: LoginChannel,
+    login_mode: LoginMode,
 ) -> HTMLResponse:
     login_session = cache.get(auth)
     if not isinstance(login_session, LoginSession):
@@ -336,6 +357,7 @@ async def _render_login_page(
             login_mode=login_mode.value,
             app_login_url=f"{server_url}/dna/i/{auth}",
             web_login_url=f"{server_url}/dna/web/{auth}",
+            json_login_url=f"{server_url}/dna/json/{auth}",
         )
     )
 
@@ -345,7 +367,7 @@ async def dna_login_index(auth: str) -> HTMLResponse:
     return await _render_login_page(
         auth,
         "index.html.j2",
-        LoginChannel.APP,
+        LoginMode.APP,
     )
 
 
@@ -354,7 +376,16 @@ async def dna_web_login_index(auth: str) -> HTMLResponse:
     return await _render_login_page(
         auth,
         "web_login.html.j2",
-        LoginChannel.WEB,
+        LoginMode.WEB,
+    )
+
+
+@app.get("/dna/json/{auth}")
+async def dna_json_login_index(auth: str) -> HTMLResponse:
+    return await _render_login_page(
+        auth,
+        "json_login.html.j2",
+        LoginMode.JSON,
     )
 
 
@@ -403,6 +434,27 @@ async def dna_login(data: LoginSubmitParams) -> dict[str, bool | str]:
 @app.post("/dna/web/login")
 async def dna_web_login(data: LoginSubmitParams) -> dict[str, bool | str]:
     return await _submit_login(data, LoginChannel.WEB)
+
+
+@app.post("/dna/json/login")
+async def dna_json_login(data: JsonLoginParams) -> dict[str, bool | str]:
+    login_session = cache.get(data.auth)
+    if not isinstance(login_session, LoginSession):
+        return {"success": False, "msg": "登录超时"}
+
+    payload = data.payload.strip()
+    if payload == "":
+        return {"success": False, "msg": "请粘贴 JSON 凭据"}
+    try:
+        HildaCredentials.model_validate_json(payload)
+    except (ValidationError, ValueError):
+        return {"success": False, "msg": "JSON 凭据格式无效"}
+
+    cache.set(
+        data.auth,
+        login_session.model_copy(update={"json_payload": payload}),
+    )
+    return {"success": True}
 
 
 @app.post("/dna/getSmsCode")
