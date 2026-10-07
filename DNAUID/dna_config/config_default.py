@@ -118,6 +118,11 @@ CONFIG_DEFAULT: dict[str, GSC] = {
         "开启就显示全部，关闭只显示已拥有的角色和武器",
         True,
     ),
+    "DobAutoUpdate": GsBoolConfig(
+        "DOB 数据包自动更新",
+        "插件启动时检查 dna-builder 数据包是否有新版本，有则自动下载并转换；此后每 24 小时复查一次",
+        True,
+    ),
     "RoleOriginalImage": GsBoolConfig(
         "角色原图功能开关",
         "开启后，可以引用角色面板图获取上传原图",

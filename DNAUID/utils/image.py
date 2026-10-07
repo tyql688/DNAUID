@@ -338,6 +338,7 @@ def add_footer(
     w: int = 0,
     offset_y: int = 0,
     is_invert: bool = False,
+    source_line: str | None = None,
 ) -> Image.Image:
     footer = Image.open(TEXT_PATH / "footer.png")
     if is_invert:
@@ -352,12 +353,25 @@ def add_footer(
             (w, int(footer.size[1] * w / footer.size[0])),
         )
 
+    line_h = 22 if source_line else 0
     x, y = (
         int((img.size[0] - footer.size[0]) / 2),
-        img.size[1] - footer.size[1] - 20 + offset_y,
+        img.size[1] - footer.size[1] - 20 - line_h + offset_y,
     )
 
     img.paste(footer, (x, y), footer)
+    if source_line:
+        # 数据来源行（页脚下方预留的 line_h 条带内）：如 "Data Source: DNA Builder (DOB) | Pack Version: 1.6.208.4"
+        from .fonts.dna_fonts import dna_font_14
+
+        draw = ImageDraw.Draw(img)
+        draw.text(
+            (img.size[0] / 2, img.size[1] - 20 - line_h / 2),
+            source_line,
+            fill=(235, 235, 240, 210),
+            font=dna_font_14,
+            anchor="mm",
+        )
     return img
 
 

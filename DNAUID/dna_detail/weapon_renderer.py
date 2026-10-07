@@ -15,7 +15,9 @@ from ..utils.image import (
     get_smooth_drawer,
 )
 from ..utils.api.model import Mode, WeaponDetail
+from ..utils.database.models import DNAUser
 from ..utils.fonts.dna_fonts import dna_font_24, dna_font_26
+from .local_weapon_attribute import compute_weapon_attribute
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
 
@@ -158,6 +160,7 @@ async def _draw_weapon_info(
     section: Image.Image,
     weapon_detail: WeaponDetail,
     info_y: int,
+    dna_user: DNAUser,
 ) -> None:
     weapon_background = _open_rgba(TEXT_PATH / "weapon_bg.png")
     weapon_image = await get_weapon_img(
@@ -201,13 +204,19 @@ async def _draw_weapon_info(
 
     attribute_panel = _open_rgba(TEXT_PATH / "weapon_attr.png")
     attribute_draw = ImageDraw.Draw(attribute_panel)
-    attributes = (
-        ("武器类型", weapon_detail.elementName, "icon16.png"),
-        ("攻击", f"{weapon_detail.attribute.atk:,}", "icon17.png"),
-        ("暴击率", f"{weapon_detail.attribute.crd:.0%}", "icon13.png"),
-        ("暴击伤害", f"{weapon_detail.attribute.cri:.0%}", "icon12.png"),
-        ("攻击速度", f"{weapon_detail.attribute.speed:.0%}", "icon14.png"),
-        ("触发率", f"{weapon_detail.attribute.trigger:.0%}", "icon15.png"),
+    # 本地计算属性总值（副属性本地算 + 震荡攻击走 calculateWeapon 基础值），与游戏面板对齐
+    computed = await compute_weapon_attribute(dna_user, weapon_detail)
+    icon_names = (
+        "icon16.png",
+        "icon17.png",
+        "icon13.png",
+        "icon12.png",
+        "icon14.png",
+        "icon15.png",
+    )
+    attributes = tuple(
+        (label, value, icon_names[i] if i < len(icon_names) else "icon16.png")
+        for i, (label, value) in enumerate(computed.rows)
     )
     for index, (label, value, icon_name) in enumerate(attributes):
         icon = _open_rgba(TEXT_PATH / f"icons/{icon_name}")
@@ -234,6 +243,7 @@ async def _draw_weapon_info(
 async def draw_weapon_detail_section(
     weapon_detail: WeaponDetail,
     title: str,
+    dna_user: DNAUser,
 ) -> Image.Image:
     placements, info_y, section_height = _mode_layout(
         weapon_detail.modes,
@@ -247,5 +257,5 @@ async def draw_weapon_detail_section(
     for mode, side, x, y in placements:
         mode_card = await _draw_mode_card(mode, side)
         section.alpha_composite(mode_card, (x, y))
-    await _draw_weapon_info(section, weapon_detail, info_y)
+    await _draw_weapon_info(section, weapon_detail, info_y, dna_user)
     return section
