@@ -181,11 +181,12 @@ def get_mod_attrs(
     Returns:
         {属性键: 当前等级小数值}；查不到记录返回 None
 
-    口径（与 dna-builder LeveledMod 一致）：
+    口径（与 dna-builder LeveledMod.updateProperties 一致）：
     - 数值属性按 ``满级值 / (maxLevel + 1) × (等级 + 1)`` 线性缩放；
     - **数组型属性**（如 追袭 ``技能伤害 [-0.5]``）逐档取值不缩放，
       下标 = min(等级 + 1, 长度) - 1；
-    - 架势类 mod（id 在 100000~150000 / 200000~250000 区间）数值不随等级缩放。
+    - **固定属性**：架势类 mod（id 在 100000~150000 / 200000~250000 区间）
+      全部属性不缩放；**换生灵 / 海妖系列的减伤**不缩放（固定为满级值）。
     """
     rec = get_by_third_id(third_id)
     if not rec:
@@ -193,16 +194,19 @@ def get_mod_attrs(
     max_level = rec.get("maxLevel") or 3
     lv = max(0, min(max_level, level if level is not None else max_level))
     stance = _is_stance(rec.get("id"))
-    scale = (lv + 1) / (max_level + 1)
+    # 换生灵 / 海妖系列减伤为固定属性（dna-builder: 系列 special-case → lv = maxLevel）
+    series = rec.get("series")
+    fixed_series = series in ("换生灵", "海妖")
     out: dict[str, float] = {}
     for key, value in (rec.get("attrs") or {}).items():
+        prop_lv = max_level if (stance or (fixed_series and key == "减伤")) else lv
         if isinstance(value, list):
-            idx = min(lv + 1, len(value)) - 1
-            out[key] = value[len(value) - 1 if stance else idx]
-        elif stance or lv >= max_level:
+            idx = min(prop_lv + 1, len(value)) - 1
+            out[key] = value[idx]
+        elif prop_lv >= max_level:
             out[key] = value
         else:
-            out[key] = value * scale
+            out[key] = value * (prop_lv + 1) / (max_level + 1)
     return out
 
 
@@ -404,11 +408,18 @@ def is_effect_effective(
     return True
 
 
-def get_effect_attrs(rec: dict[str, Any], level: int | None) -> dict[str, float]:
-    """取某魔之楔条件生效块在指定等级下的属性（小数，按等级线性缩放）
+def get_effect_attrs(
+    rec: dict[str, Any],
+    level: int | None,
+    base_values: dict[str, float] | None = None,
+) -> dict[str, float]:
+    """取某魔之楔条件生效块在指定等级下的属性（小数）
 
-    与普通属性同缩放公式 ``满级值 / (maxLevel + 1) × (等级 + 1)``；
-    仅支持数值标量（数组形态依赖条件值的特殊结算，静态面板不支持）。
+    - 标量：按等级线性缩放 ``满级值 / (maxLevel + 1) × (等级 + 1)``；
+    - **数组**：按 dna-builder applyCondition 的表达式规则结算——
+      ``最终值 = min(条件属性值 × v1, v2)``，条件属性值取 ``条件[0][0]``
+      在 ``base_values`` 中的取值（极性计数 / *id 重复数 / 属性快照，
+      武器类别计数在角色面板无上下文，按 0 处理 → 结果为 0，即不生效）。
     """
     effect = rec.get("effect") or {}
     attrs = effect.get("attrs") or {}
@@ -417,7 +428,20 @@ def get_effect_attrs(rec: dict[str, Any], level: int | None) -> dict[str, float]
     max_level = rec.get("maxLevel") or 3
     lv = max(0, min(max_level, level if level is not None else max_level))
     scale = (lv + 1) / (max_level + 1)
-    return {key: value * scale for key, value in attrs.items()}
+    conditions = (effect.get("conditions") or [])
+    cond_attr = str(conditions[0][0]) if conditions else ""
+    base_values = base_values or {}
+    out: dict[str, float] = {}
+    for key, value in attrs.items():
+        if isinstance(value, list):
+            if len(value) >= 2:
+                base = base_values.get(cond_attr, 0.0)
+                v1, v2 = value[0], value[1]
+                out[key] = min(base * v1, v2)
+            # 长度不足 2 的数组无法套用表达式，跳过
+            continue
+        out[key] = value * scale
+    return out
 
 
 def is_elem_atk_effective(mod_element: str | None, char_element: str | None) -> bool:
@@ -443,6 +467,22 @@ def get_char_skills(char_id: int | str | None) -> list[dict[str, Any]]:
     """取角色技能（紧凑字段表，供本地伤害计算）"""
     entry = get_char(char_id)
     return list((entry or {}).get("skills") or [])
+
+
+def get_weapon(weapon_id: int | str | None) -> dict[str, Any] | None:
+    """按武器 id 取武器记录（普通武器，不含同律武器）"""
+    if weapon_id is None:
+        return None
+    return (_data.get("weapons") or {}).get("byId", {}).get(str(weapon_id))
+
+
+def get_con_weapon(char_id: int | str | None, weapon_id: int | str | None) -> dict[str, Any] | None:
+    """按角色与同律武器 id 取同律武器记录"""
+    entry = get_char(char_id)
+    for weapon in (entry or {}).get("conWeapons") or []:
+        if weapon.get("id") is not None and str(weapon.get("id")) == str(weapon_id):
+            return weapon
+    return None
 
 
 def resolve_skill_fields(
@@ -539,11 +579,13 @@ __all__ = [
     "get_char_by_name",
     "get_char_bonus",
     "get_char_skills",
+    "get_con_weapon",
     "get_damage_reduce",
     "get_effects",
     "get_effect_attrs",
     "get_mod_attrs",
     "get_weapon_mod_attrs",
+    "get_weapon",
     "is_effect_effective",
     "is_elem_atk_effective",
     "is_loaded",

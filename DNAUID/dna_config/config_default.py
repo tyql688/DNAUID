@@ -120,8 +120,14 @@ CONFIG_DEFAULT: dict[str, GSC] = {
     ),
     "DobAutoUpdate": GsBoolConfig(
         "DOB 数据包自动更新",
-        "插件启动时检查 dna-builder 数据包是否有新版本，有则自动下载并转换；此后每 24 小时复查一次",
+        "插件启动时检查 dna-builder 数据包是否有新版本，有则自动下载并转换",
         True,
+    ),
+    "DobUpdateInterval": GsIntConfig(
+        "DOB 数据包更新间隔",
+        "定时检查数据包更新的间隔（分钟）",
+        60,
+        10,
     ),
     "RoleOriginalImage": GsBoolConfig(
         "角色原图功能开关",

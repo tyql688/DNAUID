@@ -135,10 +135,17 @@ def build_local_skill_panels(
     return panels
 
 
-def draw_local_damage_section(role_detail, con_weapon_detail=None):
-    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 技能字段面板
+def draw_local_damage_section(
+    role_detail,
+    con_weapon_detail=None,
+    close_weapon_detail=None,
+    ranged_weapon_detail=None,
+):
+    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 技能字段面板 + 三类武器伤害
 
     样式复用 damage_renderer 的官方面板绘制助手，口径与官方 H5 一致。
+    武器伤害 = 该武器本地最终攻击（白值 × 等级成长 × 魔之楔加成）；
+    数据不足时显示「无法计算」。
     """
     from PIL import Image, ImageDraw
 
@@ -157,6 +164,7 @@ def draw_local_damage_section(role_detail, con_weapon_detail=None):
         PANEL_HEADER_HEIGHT,
         _draw_round_rect,
     )
+    from .local_weapon_attribute import compute_weapon_attribute
     from ..utils.fonts.dna_fonts import dna_font_22, dna_font_24
 
     ctx = compute_attr_context(role_detail, con_weapon_detail)
@@ -223,6 +231,22 @@ def draw_local_damage_section(role_detail, con_weapon_detail=None):
     for panel in panels:
         height += _panel_height((len(panel.rows) + DATA_COLUMNS - 1) // DATA_COLUMNS) + PANEL_BODY_GAP
 
+    # 三类武器伤害（近战/远程/同律）：本地最终攻击；未装备的类型不展示
+    weapon_metrics: list[tuple[str, str]] = []
+    for label, weapon_detail in (
+        ("近战", close_weapon_detail),
+        ("远程", ranged_weapon_detail),
+        ("同律", con_weapon_detail),
+    ):
+        if weapon_detail is None:
+            continue
+        computed = compute_weapon_attribute(weapon_detail, role_detail)
+        final_atk = computed.final_atk
+        value = f"{final_atk:,.0f}" if final_atk is not None else "无法计算"
+        weapon_metrics.append((label, weapon_detail.name, value))
+    if weapon_metrics:
+        height += 88
+
     image = Image.new("RGBA", (PANEL_WIDTH, max(80, height)), (0, 0, 0, 0))
     _draw_round_rect(image, (0, 0, PANEL_WIDTH, image.height), 10, PANEL_FILL)
     draw = ImageDraw.Draw(image)
@@ -280,6 +304,22 @@ def draw_local_damage_section(role_detail, con_weapon_detail=None):
     # 角色属性：基础 → 最终
     attr_metrics = [(name, f"{base} → {final}") for name, base, final in ordered]
     y = _draw_metrics(attr_metrics, y) + PANEL_BODY_GAP
+
+    # 三类武器伤害（近战/远程/同律）
+    if weapon_metrics:
+        footer_h = 88
+        footer = Image.new("RGBA", (PANEL_WIDTH - PANEL_PADDING * 2, footer_h), (255, 255, 255, 14))
+        image.alpha_composite(footer, (PANEL_PADDING, y))
+        column_width = (PANEL_WIDTH - PANEL_PADDING * 2) // len(weapon_metrics)
+        for index, (label, name, value) in enumerate(weapon_metrics):
+            x = PANEL_PADDING + index * column_width
+            center_x = x + column_width // 2
+            if index > 0:
+                draw.line((x, y + 16, x, y + footer_h - 16), fill=(255, 255, 255, 40), width=1)
+            draw.text((center_x, y + 14), label, font=dna_font_22, fill=SECONDARY_TEXT, anchor="mm")
+            draw.text((center_x, y + 40), name, font=dna_font_22, fill=SECONDARY_TEXT, anchor="mm")
+            draw.text((center_x, y + 68), value, font=dna_font_24, fill=VALUE_TEXT, anchor="mm")
+        y += footer_h + PANEL_BODY_GAP
 
     # 技能面板
     for panel in panels:

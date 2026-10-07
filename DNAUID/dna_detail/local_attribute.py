@@ -172,7 +172,15 @@ def _collect_modes(
             id_count,
             attrs_snapshot,
         ):
-            eff_attrs = dob_loader.get_effect_attrs(rec, mode.level)
+            # 数组形态的条件属性（如 锋芒 增伤 [0.06, 0.18]）按
+            # min(条件属性值 × v1, v2) 结算，条件属性值来自极性/id 计数与属性快照
+            base_values: dict[str, float] = {
+                "*id": float(max(id_count.values())) if id_count else 0.0
+            }
+            for pol, count in polarity_count.items():
+                base_values[f"{pol}趋向"] = float(count)
+            base_values.update(attrs_snapshot or {})
+            eff_attrs = dob_loader.get_effect_attrs(rec, mode.level, base_values)
             bonus.add(dob_loader.parse_attrs(eff_attrs, rec.get("element")))
             if isinstance(eff_attrs.get("减伤"), (int, float)):
                 bonus.reduce_sources.append(float(eff_attrs["减伤"]))
@@ -204,14 +212,15 @@ def _condition_snapshot(base_main: dict[str, float], bonus: AttributeBonus) -> d
     """从当前加成汇总出「属性门槛」条件用的面板属性快照
 
     口径与 dna-builder 的 attrs 一致：率类 = 1 + 加成（小数，如 3.5 = 350%），
-    昂扬/背水/充盈威力 = 0 基准小数，神智 = 最终值。
+    昂扬/背水/充盈威力 = 0 基准小数，神智 = 最终值；
+    效益/范围/耐久与技能计算共用同一套上限截断（175%/280%/400%）。
     """
     return {
         "神智": float(base_main.get("最大神志", 0.0) or 0.0) * (1 + bonus.main.get("最大神志", 0.0) / 100),
         "技能威力": 1 + bonus.rate.get("技能威力", 0.0) / 100,
-        "技能效益": 1 + bonus.rate.get("技能效益", 0.0) / 100,
-        "技能耐久": 1 + bonus.rate.get("技能耐久", 0.0) / 100,
-        "技能范围": 1 + bonus.rate.get("技能范围", 0.0) / 100,
+        "技能效益": min(1 + bonus.rate.get("技能效益", 0.0) / 100, 1.75),
+        "技能耐久": min(1 + bonus.rate.get("技能耐久", 0.0) / 100, 4),
+        "技能范围": min(1 + bonus.rate.get("技能范围", 0.0) / 100, 2.8),
         "昂扬": bonus.rate.get("昂扬", 0.0) / 100,
         "充盈威力": (bonus.rate.get("充盈威力", 0.0) + bonus.extra.get("充盈威力", 0.0)) / 100,
     }
@@ -430,10 +439,12 @@ def compute_final_attribute(
             continue
         rows.append((name, _fmt_value(final_main[name], percent=False)))
 
-    # 率类：100 + 加成
+    # 率类：100 + 加成；效益/范围/耐久与技能计算共用上限截断（ctx.tt）
     for key, display in _RATE_DISPLAY.items():
-        pct = bonus.rate.get(key, 0.0)
-        rows.append((display, _fmt_value(100 + pct, percent=True)))
+        if key in ctx.tt:
+            rows.append((display, _fmt_value(ctx.tt[key] * 100, percent=True)))
+        else:
+            rows.append((display, _fmt_value(100 + bonus.rate.get(key, 0.0), percent=True)))
 
     # 昂扬 / 背水：0 + 加成
     for key, display in _EXTRA_DISPLAY.items():

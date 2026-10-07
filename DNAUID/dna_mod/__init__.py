@@ -1,9 +1,12 @@
 import asyncio
 
 from gsuid_core.sv import SV
+from gsuid_core.aps import scheduler
 from gsuid_core.bot import Bot
+from gsuid_core.logger import logger
 from gsuid_core.models import Event
 
+from ..dna_config.dna_config import DNAConfig
 from . import dob_pack, dob_loader
 
 sv_dob = SV("dna数据包")
@@ -39,3 +42,18 @@ async def reload_dob_pack(bot: Bot, ev: Event):
     if not dob_loader.is_loaded():
         return await bot.send("重载失败：dob_data.json 缺失或损坏，请发送「dna更新数据包」")
     await bot.send(f"DOB 数据已重载：v{dob_loader.version()}（魔之楔 {dob_loader.mod_count()} 条）")
+
+# 定时检查数据包更新（间隔可配置；手动与自动更新共用 dob_pack 内部锁串行执行）
+@scheduler.scheduled_job(
+    "interval",
+    minutes=max(10, int(DNAConfig.get_config("DobUpdateInterval").data or 60)),
+    id="dna_dob_auto_update",
+    replace_existing=True,
+)
+async def _dob_auto_update() -> None:
+    try:
+        changed, message = await dob_pack.sync_async()
+        if changed:
+            logger.info(f"[DNA DOB] {message}（定时检查）")
+    except Exception as error:  # noqa: BLE001
+        logger.warning(f"[DNA DOB] 定时检查失败（不影响使用）: {error!r}")

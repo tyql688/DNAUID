@@ -43,14 +43,22 @@ zip 内：
 更新流程
 --------
 ``sync(force)``：拉 versions.json → 与本地版本比对 → 下载整包 → 内存解包转换
-→ 原子写 dob_data.json。旧 wiki 抓取器（dnabbs wiki / 官方 config 双源）已废弃，
-全部数据改由本模块提供。
+→ 原子写 dob_data.json。手动与自动更新共用一个 ``asyncio.Lock`` 串行执行；
+临时文件按进程与时间戳命名，避免两次更新争用同一 ``.tmp`` 导致替换失败。
+旧 wiki 抓取器（dnabbs wiki / 官方 config 双源）已废弃，全部数据改由本模块提供。
+
+数据文件位于 ``data/DNAUID/resource/dob/dob_data.json``（路径定义统一在
+``utils/resource/RESOURCE_PATH.py``），旧位置（dna_mod/data/）的文件在读取时自动迁移。
 """
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
+import os
+import shutil
+import time
 import zipfile
 from typing import Any
 from pathlib import Path
@@ -71,7 +79,14 @@ try:
 except ImportError:  # pragma: no cover
     httpx = None  # type: ignore[assignment]
 
-DATA_PATH = Path(__file__).parent / "data" / "dob_data.json"
+# 数据文件统一放 data/DNAUID/resource/dob/（路径定义在 utils/resource/RESOURCE_PATH.py，
+# 下载、读取和状态查询共用）；脱离 gsuid_core 的独立环境回退到模块目录。
+# 旧位置 dna_mod/data/dob_data.json 在读取时自动迁移。
+try:
+    from ..utils.resource.RESOURCE_PATH import DOB_DATA_PATH as DATA_PATH
+except ImportError:  # pragma: no cover - 独立测试环境
+    DATA_PATH = Path(__file__).parent / "data" / "dob_data.json"
+_LEGACY_DATA_PATH = Path(__file__).parent / "data" / "dob_data.json"
 
 # 数据包 CDN 双源（与 dna-builder 客户端一致：OSS 主源 + R2 备源）
 CDN_BASES = (
@@ -355,17 +370,21 @@ def _convert_effect(effect: dict[str, Any] | None) -> dict[str, Any] | None:
     """生效块 → {"conditions": [...], "attrs": {...}}；无条件或无数值属性时返回 None
 
     数据包形态：``{"条件": [["D趋向", ">=", 4]], "背水": 0.22}``。
-    条件原样保留（判定在查询侧做）；属性只保留数值标量（数组形态依赖
-    条件值的特殊结算，静态面板暂不支持）。
+    条件原样保留（判定在查询侧做）；属性保留数值标量与**纯数值数组**——
+    数组形态按 dna-builder applyCondition 的表达式规则在查询侧结算：
+    ``最终值 = min(条件属性值 × v1, v2)``（如 锋芒系列 增伤 [0.06, 0.18]）。
     """
     if not effect:
         return None
     conditions = [list(c) for c in (effect.get("条件") or [])]
-    attrs = {
-        key: value
-        for key, value in effect.items()
-        if key != "条件" and isinstance(value, (int, float)) and not isinstance(value, bool)
-    }
+    attrs: dict[str, Any] = {}
+    for key, value in effect.items():
+        if key == "条件" or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            attrs[key] = value
+        elif isinstance(value, list) and value and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+            attrs[key] = list(value)
     if not conditions or not attrs:
         return None
     return {"conditions": conditions, "attrs": attrs}
@@ -507,8 +526,25 @@ def _download_zip(package_file: str) -> bytes:
     raise last_error or RuntimeError("数据包下载失败")
 
 
+def _migrate_legacy() -> None:
+    """旧位置（dna_mod/data/）的 dob_data.json 迁移到 resource/dob/"""
+    try:
+        if (
+            _LEGACY_DATA_PATH.resolve() == DATA_PATH.resolve()
+            or not _LEGACY_DATA_PATH.exists()
+            or DATA_PATH.exists()
+        ):
+            return
+        DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(_LEGACY_DATA_PATH), str(DATA_PATH))
+        logger.info(f"[DNA DOB] 旧数据文件已迁移到 {DATA_PATH}")
+    except Exception as error:  # noqa: BLE001
+        logger.warning(f"[DNA DOB] 旧数据文件迁移失败（不影响使用）: {error!r}")
+
+
 def read_local_meta() -> dict[str, Any] | None:
     """读本地已转换数据的 _meta；文件缺失/损坏返回 None"""
+    _migrate_legacy()
     try:
         raw = json.loads(DATA_PATH.read_text(encoding="utf-8"))
         return raw.get("_meta")
@@ -522,8 +558,9 @@ def convert_from_file(zip_path: str | Path) -> dict[str, Any]:
 
 
 def _write_atomic(payload: str) -> None:
+    """原子写入：临时文件按进程 + 时间戳命名，避免并发更新争用同一 .tmp"""
     DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = DATA_PATH.with_suffix(".json.tmp")
+    tmp_path = DATA_PATH.with_name(f"{DATA_PATH.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
     tmp_path.write_text(payload, encoding="utf-8")
     tmp_path.replace(DATA_PATH)
 
@@ -566,45 +603,63 @@ def sync(force: bool = False) -> tuple[bool, str]:
     )
 
 
-async def sync_async(force: bool = False) -> tuple[bool, str]:
-    """sync 的异步封装（线程池执行，避免阻塞事件循环）"""
-    import asyncio
+# 手动与自动更新共用一把锁：检查、下载、替换和重载串行执行，
+# 避免两次更新同时进入、争用临时文件或交错写盘。
+# asyncio.Lock 在 3.10+ 不再绑定事件循环，模块导入时创建是安全的。
+_update_lock = asyncio.Lock()
 
-    return await asyncio.to_thread(sync, force)
+
+async def sync_async(force: bool = False) -> tuple[bool, str]:
+    """同步数据包（异步入口）：检查 → 下载 → 校验替换 → 重载查询层，全程持锁串行"""
+    async with _update_lock:
+        changed, message = await asyncio.to_thread(sync, force)
+        if changed:
+            # 更新成功后必须重载查询层：loader 在 import 时读盘，
+            # 那时 dob_data.json 可能还不存在（首次启动）或仍是旧版本
+            from . import dob_loader
+
+            await asyncio.to_thread(dob_loader.reload)
+    return changed, message
+
+
+async def init_if_needed() -> None:
+    """首次没有数据时同步等待初始化；有数据时由调用方决定是否后台检查"""
+    if not is_data_ready():
+        await sync_async()
 
 
 def startup_auto_sync() -> None:
-    """启动时后台检查更新 + 此后每 24 小时复查一次（协程，供 on_core_start 挂载）"""
+    """启动时后台检查更新（周期复查由 gsuid_core 调度器按配置间隔承担）"""
     import asyncio
 
-    async def _check_once(reason: str) -> None:
+    async def _run() -> None:
         try:
             changed, message = await sync_async()
             if changed:
-                # 首次启动/换版本后必须重载查询层：loader 在 import 时读盘，
-                # 那时 dob_data.json 可能还不存在（首次启动）或仍是旧版本
-                from . import dob_loader
-
-                await asyncio.to_thread(dob_loader.reload)
-                logger.info(f"[DNA DOB] {message}（{reason}）")
+                logger.info(f"[DNA DOB] {message}（启动检查）")
         except Exception as error:  # noqa: BLE001
-            logger.warning(f"[DNA DOB] {reason}更新失败（不影响使用）: {error!r}")
-
-    async def _daily_loop() -> None:
-        while True:
-            await asyncio.sleep(24 * 3600)
-            await _check_once("每日检查")
+            logger.warning(f"[DNA DOB] 启动检查失败（不影响使用）: {error!r}")
 
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_check_once("启动"))
-        loop.create_task(_daily_loop())
+        asyncio.get_running_loop().create_task(_run())
     except RuntimeError:
-        logger.warning("[DNA DOB] 无运行中的事件循环，跳过启动更新")
+        logger.warning("[DNA DOB] 无运行中的事件循环，跳过启动检查")
+
+
+def is_data_ready() -> bool:
+    """本地是否已有可用的转换数据"""
+    _migrate_legacy()
+    try:
+        meta = json.loads(DATA_PATH.read_text(encoding="utf-8")).get("_meta")
+        return bool(meta and meta.get("packVersion"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
 
 
 __all__ = [
     "CDN_BASES",
+    "init_if_needed",
+    "is_data_ready",
     "COMMON_LEVEL_UP",
     "DATA_PATH",
     "MAX_LEVEL_MULTIPLIER",

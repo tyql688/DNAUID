@@ -252,14 +252,14 @@ async def draw_role_card(
             return
 
     # 伤害计算：纯本地（DOB 数据包技能字段 + dna-builder 结算口径），不再依赖官方 H5 接口
-    damage_section = draw_local_damage_section(role_detail, con_weapon_detail)
+    damage_section = draw_local_damage_section(role_detail, con_weapon_detail, close_weapon_detail, ranged_weapon_detail)
     weapon_sections: list[Image.Image] = []
     if con_weapon_detail is not None:
         weapon_sections.append(
             await draw_weapon_detail_section(
                 con_weapon_detail,
                 "同律武器",
-                dna_user,
+                role_detail,
             )
         )
 
@@ -268,7 +268,7 @@ async def draw_role_card(
             await draw_weapon_detail_section(
                 close_weapon_detail,
                 "近战武器",
-                dna_user,
+                role_detail,
             )
         )
     if ranged_weapon_detail is not None:
@@ -276,7 +276,7 @@ async def draw_role_card(
             await draw_weapon_detail_section(
                 ranged_weapon_detail,
                 "远程武器",
-                dna_user,
+                role_detail,
             )
         )
 

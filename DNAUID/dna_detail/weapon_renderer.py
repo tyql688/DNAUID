@@ -14,8 +14,7 @@ from ..utils.image import (
     get_weapon_img,
     get_smooth_drawer,
 )
-from ..utils.api.model import Mode, WeaponDetail
-from ..utils.database.models import DNAUser
+from ..utils.api.model import Mode, RoleDetail, WeaponDetail
 from ..utils.fonts.dna_fonts import dna_font_24, dna_font_26
 from .local_weapon_attribute import compute_weapon_attribute
 
@@ -160,7 +159,7 @@ async def _draw_weapon_info(
     section: Image.Image,
     weapon_detail: WeaponDetail,
     info_y: int,
-    dna_user: DNAUser,
+    role_detail: RoleDetail,
 ) -> None:
     weapon_background = _open_rgba(TEXT_PATH / "weapon_bg.png")
     weapon_image = await get_weapon_img(
@@ -205,7 +204,7 @@ async def _draw_weapon_info(
     attribute_panel = _open_rgba(TEXT_PATH / "weapon_attr.png")
     attribute_draw = ImageDraw.Draw(attribute_panel)
     # 本地计算属性总值（副属性本地算 + 震荡攻击走 calculateWeapon 基础值），与游戏面板对齐
-    computed = await compute_weapon_attribute(dna_user, weapon_detail)
+    computed = compute_weapon_attribute(weapon_detail, role_detail)
     icon_names = (
         "icon16.png",
         "icon17.png",
@@ -243,7 +242,7 @@ async def _draw_weapon_info(
 async def draw_weapon_detail_section(
     weapon_detail: WeaponDetail,
     title: str,
-    dna_user: DNAUser,
+    role_detail: RoleDetail,
 ) -> Image.Image:
     placements, info_y, section_height = _mode_layout(
         weapon_detail.modes,
@@ -257,5 +256,5 @@ async def draw_weapon_detail_section(
     for mode, side, x, y in placements:
         mode_card = await _draw_mode_card(mode, side)
         section.alpha_composite(mode_card, (x, y))
-    await _draw_weapon_info(section, weapon_detail, info_y, dna_user)
+    await _draw_weapon_info(section, weapon_detail, info_y, role_detail)
     return section
