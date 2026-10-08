@@ -184,9 +184,9 @@ def draw_local_damage_section(
     }
     final_rate["昂扬"] = f"{ctx.bonus.rate.get('昂扬', 0.0):.0f}%"
     final_rate["背水"] = f"{ctx.bonus.rate.get('背水', 0.0):.0f}%"
-    # 充盈威力：白板 100% + 引擎值（含溢出，TS 界面口径）
+    # 充盈威力 0 起始（TS：totalFullness 从 0 累加，界面 val*100；+1 只在充盈伤害乘区现用）
     fullness = ctx.bonus.rate.get("充盈威力", 0.0) + ctx.bonus.extra.get("充盈威力", 0.0)
-    final_rate["充盈威力"] = f"{100 + fullness:.0f}%"
+    final_rate["充盈威力"] = f"{fullness:.0f}%"
 
     def _base_num(name: str) -> str:
         return f"{base_map[name]:,.2f}"
@@ -211,7 +211,7 @@ def draw_local_damage_section(
         ("技能范围", _base_rate("技能范围"), final_rate["技能范围"]),
         ("技能耐久", _base_rate("技能耐久"), final_rate["技能耐久"]),
         ("技能效益", _base_rate("技能效益"), final_rate["技能效益"]),
-        ("充盈威力", "100%", final_rate["充盈威力"]),
+        ("充盈威力", "0%", final_rate["充盈威力"]),
         ("昂扬", "0%", final_rate["昂扬"]),
         ("背水", "0%", final_rate["背水"]),
     ]

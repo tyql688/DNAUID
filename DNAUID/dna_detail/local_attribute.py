@@ -305,8 +305,9 @@ def compute_final_attribute(build: SdkBuild, ctx: AttrContext | None = None) -> 
         pct = bonus.rate.get(key, 0.0)
         rows.append((display, _fmt_value(pct, percent=True)))
 
+    # 充盈威力 0 起始（TS：totalFullness 从 0 累加，显示 val*100；+1 只在充盈伤害乘区现用）
     fullness = bonus.rate.get("充盈威力", 0.0) + bonus.extra.get("充盈威力", 0.0)
-    rows.append(("充盈威力", _fmt_value(100 + fullness, percent=True)))
+    rows.append(("充盈威力", _fmt_value(fullness, percent=True)))
 
     hidden: list[tuple[str, str]] = [
         ("增伤", _fmt_value(bonus.extra.get("增伤", 0.0), percent=True)),
