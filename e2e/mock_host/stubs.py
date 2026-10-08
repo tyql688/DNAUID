@@ -14,15 +14,16 @@
 
 from __future__ import annotations
 
+import sys
+import types
 import asyncio
+import logging
+import tempfile
 import importlib.abc
 import importlib.machinery
-import logging
-import sys
-import tempfile
-import types
+from typing import Any
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
 
 from .bot import MockBot
 from .event import MockEvent, MockMessage
@@ -74,6 +75,7 @@ def get_plugin_available_prefix(plugin_name: str = "") -> str:  # noqa: ARG001
 # ---------------------------------------------------------------------------
 # SV / Plugins
 # ---------------------------------------------------------------------------
+
 
 def _as_tuple(value: Any) -> tuple:
     if value is None:
@@ -131,6 +133,7 @@ class SV:
     # 兼容可能存在的其它装饰形态：直接当作 fullmatch 记录
     def __getattr__(self, name: str) -> Any:
         if name.startswith("on_"):
+
             def _fallback(triggers: Any = (), **kw: Any) -> Callable:
                 return self._deco(name[3:], triggers, **kw)
 
@@ -210,15 +213,17 @@ class _BotAdapter:
     def __init__(self, bot: Any) -> None:
         self._bot = bot
 
-    async def target_send(self, msg: Any, target_type: str = "", target_id: Any = None,
-                          *args: Any, **kwargs: Any) -> None:
+    async def target_send(
+        self, msg: Any, target_type: str = "", target_id: Any = None, *args: Any, **kwargs: Any
+    ) -> None:
         from .segments import SentMessage, normalize_message  # noqa: PLC0415
 
-        self._bot.inbox.append(SentMessage(
-            segments=normalize_message(msg),
-            extra={"push": True, "target_type": target_type,
-                   "target_id": str(target_id)},
-        ))
+        self._bot.inbox.append(
+            SentMessage(
+                segments=normalize_message(msg),
+                extra={"push": True, "target_type": target_type, "target_id": str(target_id)},
+            )
+        )
 
 
 class _Gss:
@@ -244,7 +249,7 @@ scheduler = _Scheduler()
 class _Subscription:
     """与真实 Subscribe 记录同构的订阅条目（handlers 只读字段 + send 投递）。"""
 
-    def __init__(self, task_name: str, ev: Any, store: "_SubscribeStore", **kwargs: Any) -> None:
+    def __init__(self, task_name: str, ev: Any, store: _SubscribeStore, **kwargs: Any) -> None:
         self.task_name = task_name
         self.group_id = getattr(ev, "group_id", None)
         self.user_id = getattr(ev, "user_id", None)
@@ -272,12 +277,14 @@ class _Subscription:
     async def send(self, msg: Any) -> None:
         from .segments import normalize_message  # noqa: PLC0415
 
-        self._store.outbox.append({
-            "task": self.task_name,
-            "group_id": self.group_id,
-            "user_id": self.user_id,
-            "segments": normalize_message(msg),
-        })
+        self._store.outbox.append(
+            {
+                "task": self.task_name,
+                "group_id": self.group_id,
+                "user_id": self.user_id,
+                "segments": normalize_message(msg),
+            }
+        )
 
 
 class _SubscribeStore:
@@ -305,9 +312,9 @@ class _SubscribeStore:
         ev = args[2] if len(args) > 2 else None
         entry = _Subscription(key, ev, self, **kwargs)
         subs = self.data.setdefault(key, [])
-        subs[:] = [s for s in subs
-                   if not (s.group_id == entry.group_id and s.user_id == entry.user_id
-                           and s.uid == entry.uid)]
+        subs[:] = [
+            s for s in subs if not (s.group_id == entry.group_id and s.user_id == entry.user_id and s.uid == entry.uid)
+        ]
         subs.append(entry)
 
     async def delete_subscribe(self, *args: Any, **kwargs: Any) -> None:
@@ -358,25 +365,6 @@ def on_core_start(func: Callable) -> Callable:
 # ---------------------------------------------------------------------------
 # 特化小函数
 # ---------------------------------------------------------------------------
-
-async def convert_img(img: Any) -> bytes:
-    """尽力把图片载荷转成 bytes（mock 宿主不做真实绘图）。"""
-    if isinstance(img, (bytes, bytearray)):
-        return bytes(img)
-    try:
-        from PIL import Image  # type: ignore
-
-        if isinstance(img, Image.Image):
-            import io as _io
-
-            buf = _io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
-    except ImportError:
-        pass
-    if isinstance(img, str):
-        return img.encode("utf-8", errors="ignore")
-    return repr(img).encode("utf-8", errors="ignore")
 
 
 async def convert_img(img: Any) -> bytes:
@@ -515,6 +503,7 @@ site = _Site()
 # 通用 Dummy：可调用 / 可等待 / 可继承 / 可做装饰器
 # ---------------------------------------------------------------------------
 
+
 class _DummyMeta(type):
     def __getattr__(cls, name: str) -> Any:
         if name.startswith("__") and name.endswith("__"):
@@ -530,7 +519,7 @@ class Dummy(metaclass=_DummyMeta):
         self._args = args
         self._kwargs = kwargs
 
-    def __call__(self, *args: Any, **kwargs: Any) -> "Dummy":
+    def __call__(self, *args: Any, **kwargs: Any) -> Dummy:
         return Dummy(*args, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
@@ -563,6 +552,7 @@ class Dummy(metaclass=_DummyMeta):
 # ---------------------------------------------------------------------------
 # 模块装配
 # ---------------------------------------------------------------------------
+
 
 def _mod(name: str, **attrs: Any) -> types.ModuleType:
     module = types.ModuleType(name)
@@ -622,8 +612,7 @@ def install() -> None:
     pkg.__path__ = []  # type: ignore[attr-defined]
     sys.modules["gsuid_core"] = pkg
 
-    _mod("gsuid_core.sv", SV=SV, Plugins=Plugins,
-         get_plugin_available_prefix=get_plugin_available_prefix)
+    _mod("gsuid_core.sv", SV=SV, Plugins=Plugins, get_plugin_available_prefix=get_plugin_available_prefix)
     _mod("gsuid_core.bot", Bot=MockBot)
     _mod("gsuid_core.models", Event=MockEvent, Message=MockMessage)
     _mod("gsuid_core.logger", logger=logger)
@@ -657,8 +646,8 @@ def install() -> None:
         )
     from .gs_config_real import (  # noqa: PLC0415
         StringConfig as RealStringConfig,
-        make_database_config,
         make_pic_gen_config,
+        make_database_config,
     )
 
     _config_dir = get_res_path("config")
@@ -672,16 +661,19 @@ def install() -> None:
     _mod("gsuid_core.utils.api.mys_api", mys_api=Dummy())
     _mod("gsuid_core.help.utils", register_help=lambda *a, **k: HELP_ENTRIES.append((a, k)))
     _mod("gsuid_core.status", register_status=lambda *a, **k: None)
-    _mod("gsuid_core.status.plugin_status",
-         register_status=lambda *a, **k: STATUS_ENTRIES.append((a, k)))
+    _mod("gsuid_core.status.plugin_status", register_status=lambda *a, **k: STATUS_ENTRIES.append((a, k)))
     # NOTE: gsuid_core.utils.image.* 真实模块由白名单 hook 按需装载，此处不再预装
     _mod("gsuid_core.utils.database.startup", exec_list=[])
     if not _rg.is_real_available("gsuid_core.utils.database.base_models"):
-        _mod("gsuid_core.utils.database.base_models",
-             Bind=Dummy, User=Dummy, BaseIDModel=Dummy, with_session=with_session)
+        _mod(
+            "gsuid_core.utils.database.base_models",
+            Bind=Dummy,
+            User=Dummy,
+            BaseIDModel=Dummy,
+            with_session=with_session,
+        )
     _mod("gsuid_core.utils.cookie_manager.qrlogin", get_qrcode_base64=get_qrcode_base64)
-    _mod("gsuid_core.webconsole.mount_app",
-         PageSchema=Dummy, GsAdminModel=Dummy, site=site)
+    _mod("gsuid_core.webconsole.mount_app", PageSchema=Dummy, GsAdminModel=Dummy, site=site)
 
     sys.meta_path.insert(0, _FallbackFinder())
     # 白名单必须在兜底之前：重新插到最 front，保证真实模块优先命中

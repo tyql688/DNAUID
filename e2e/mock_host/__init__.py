@@ -1,20 +1,20 @@
 """mock 宿主对外门面。"""
 
 from .bot import MockBot
-from .dispatcher import MockHost
 from .event import MockEvent, make_event
-from .loader import ensure_demo_handlers, init_runtime, load_plugin
-from .segments import MessageSegment, SentMessage, normalize_message, serialize_segment
 from .stubs import (
     HANDLERS,
-    HELP_RENDERER,
     PLUGIN_INFO,
-    core_config,
+    HELP_RENDERER,
     install,
+    core_config,
     reset_state,
     run_startup,
     set_custom_prefixes,
 )
+from .loader import load_plugin, init_runtime, ensure_demo_handlers
+from .segments import SentMessage, MessageSegment, normalize_message, serialize_segment
+from .dispatcher import MockHost
 
 __all__ = [
     "HANDLERS",

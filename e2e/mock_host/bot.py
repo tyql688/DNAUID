@@ -5,8 +5,8 @@ from __future__ import annotations
 import itertools
 from typing import Any
 
-from .segments import SentMessage, normalize_message
 from .turn import current_turn
+from .segments import SentMessage, normalize_message
 
 _msg_id = itertools.count(1)
 

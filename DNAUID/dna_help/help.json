@@ -89,7 +89,7 @@
       }
     ]
   },
-  "密函":{
+  "密函": {
     "desc": "密函功能",
     "data": [
       {
@@ -201,7 +201,7 @@
         "need_sk": false,
         "need_admin": false
       },
-       {
+      {
         "name": "日常",
         "desc": "日常查询",
         "eg": "日常",
@@ -222,6 +222,22 @@
         "desc": "查询本周/上周资源获取统计",
         "eg": "周报 / 上周周报",
         "need_ck": true,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
+        "name": "DOB榜单",
+        "desc": "查看 DOB 排行榜（各榜单席位一览）",
+        "eg": "DOB榜单",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
+        "name": "DOB构筑",
+        "desc": "查看 DOB 构筑卡（支持BDID / 角色构筑列表与序号点选）",
+        "eg": "DOBBD <构筑ID> / DOB<角色名>构筑 [序号] / <角色名>构筑 [序号]",
+        "need_ck": false,
         "need_sk": false,
         "need_admin": false
       }
@@ -321,7 +337,7 @@
         "need_sk": false,
         "need_admin": true
       },
-       {
+      {
         "name": "指定开偷窥",
         "desc": "允许会话中被艾特的玩家被其它人查看该玩家的游戏信息",
         "eg": "指定开偷窥",
@@ -353,7 +369,7 @@
         "need_sk": false,
         "need_admin": true
       },
-        {
+      {
         "name": "取消全体偷窥",
         "desc": "取消全体偷窥设置，恢复个人设置",
         "eg": "取消全体偷窥",

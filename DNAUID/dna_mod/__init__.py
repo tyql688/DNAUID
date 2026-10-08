@@ -6,8 +6,7 @@ from gsuid_core.bot import Bot
 from gsuid_core.logger import logger
 from gsuid_core.models import Event
 
-from ..dna_sdk import SdkPackError, counts, is_data_ready, reload_tables, sync_async, version
-from ..dna_sdk import tables as _sdk_tables
+from ..dna_sdk import SdkPackError, counts, tables as _sdk_tables, version, sync_async, is_data_ready, reload_tables
 from ..dna_config.dna_config import DNAConfig
 
 sv_dob = SV("dna数据包")

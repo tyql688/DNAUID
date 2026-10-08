@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
+import sys
 import importlib.abc
 import importlib.util
-import sys
-from pathlib import Path
 from types import ModuleType
 from typing import Any
+from pathlib import Path
 
 REAL_DIR = Path(__file__).parent / "_real"
 

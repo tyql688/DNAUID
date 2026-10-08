@@ -4,16 +4,17 @@
 不再维护自有 ``dob_data.json`` 转换格式，直接消费 dna-builder 数据包，
 结算口径由 ``dna_builder_sdk``（dobsdk，下同）保证。
 """
+
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 from dna_builder_sdk import DataPackStore
+from dna_builder_sdk.errors import DobApiError
 from dna_builder_sdk.calc.curves import COMMON_LEVEL_UP
 from dna_builder_sdk.calc.entities import level_mod
-from dna_builder_sdk.errors import DobApiError
 
 try:
     from ..utils.resource.RESOURCE_PATH import DOB_PATH
@@ -64,7 +65,9 @@ class SdkPackError(RuntimeError):
 
 
 # —— 沿用旧口径的小常量（渲染/判定共用，键名与数据包一致）——
-QUALITY_TO_INT = {"白": 1, "蓝": 2, "紫": 3, "金": 4, "彩": 5}
+# 数据包品质文字 → 官方品质 int（与 mod_left/right/center_{n}.png 框色一致：
+# 1灰 2绿 3蓝 4紫 5金；旧表把蓝/紫/金整体错位了一档，金框被画成紫）
+QUALITY_TO_INT = {"白": 1, "绿": 2, "蓝": 3, "紫": 4, "金": 5}
 WEAPON_ATTR_MAP = {
     "攻击": "攻击",
     "物理": "物理",

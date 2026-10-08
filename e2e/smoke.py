@@ -13,9 +13,9 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import e2e.tests.test_dispatcher as t_dispatch  # noqa: E402
-import e2e.tests.test_segments as t_segments  # noqa: E402
 import e2e.tests.test_web_api as t_web  # noqa: E402
+import e2e.tests.test_segments as t_segments  # noqa: E402
+import e2e.tests.test_dispatcher as t_dispatch  # noqa: E402
 
 
 def main() -> int:

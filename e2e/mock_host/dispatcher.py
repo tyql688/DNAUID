@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import copy
 import re
+import copy
 import time
-from dataclasses import dataclass, field
+import asyncio
 from typing import Any
+from dataclasses import field, dataclass
 
 from .bot import MockBot
 from .event import make_event
@@ -37,14 +37,13 @@ def strip_prefix(raw: str, prefixes: list[str]) -> tuple[str, str] | None:
     text = raw.strip()
     for prefix in sorted(prefixes, key=len, reverse=True):
         if prefix and text.startswith(prefix):
-            return prefix, text[len(prefix):].lstrip()
+            return prefix, text[len(prefix) :].lstrip()
     return None
 
 
 # 与上游 trigger_index / handler 排序语义对齐：trie 类（command/prefix/fullmatch）
 # 先于兜底桶（regex/keyword），同级再按 priority，最后按注册顺序。
-_TYPE_RANK = {"command": 0, "prefix": 0, "fullmatch": 0, "suffix": 1,
-              "keyword": 2, "regex": 2, "message": 3, "meta": 3}
+_TYPE_RANK = {"command": 0, "prefix": 0, "fullmatch": 0, "suffix": 1, "keyword": 2, "regex": 2, "message": 3, "meta": 3}
 
 
 def _match_handler(raw: str, body: str, handler: dict[str, Any]) -> dict[str, Any] | None:
@@ -56,12 +55,12 @@ def _match_handler(raw: str, body: str, handler: dict[str, Any]) -> dict[str, An
         elif kind == "prefix":
             # 真宿主：触发词本身不算命中，后面必须还有正文
             if body.startswith(str(trigger)) and len(body) > len(str(trigger)):
-                rest = body[len(str(trigger)):].strip()
+                rest = body[len(str(trigger)) :].strip()
                 return {"command": body, "text": rest, "trigger": str(trigger)}
         elif kind == "command":
             name = str(trigger)
             if body == name or body.startswith(name):
-                rest = body[len(name):].lstrip()
+                rest = body[len(name) :].lstrip()
                 return {"command": name, "text": rest, "trigger": name}
         elif kind == "regex":
             # 真宿主用 findall/search 判定（非 match），分组同样按 search 取
@@ -101,8 +100,9 @@ class MockHost:
         self.bot = bot or MockBot()
         self.history: list[dict[str, Any]] = []
         try:
-            from .stubs import _Gss  # noqa: PLC0415
             import gsuid_core.gss as _gss_mod  # noqa: PLC0415
+
+            from .stubs import _Gss  # noqa: PLC0415
 
             if isinstance(getattr(_gss_mod, "gss", None), _Gss):
                 _gss_mod.gss.register(self.bot)
@@ -127,9 +127,9 @@ class MockHost:
         images: list | None = None,
         user_pm: int = 6,
     ) -> DispatchResult:
-        from .turn import current_turn  # noqa: PLC0415
-
         import uuid as _uuid  # noqa: PLC0415
+
+        from .turn import current_turn  # noqa: PLC0415
 
         result = DispatchResult()
         token = _uuid.uuid4().hex[:8]
@@ -144,29 +144,24 @@ class MockHost:
                 }
             )
             self.history.append({"role": "user", "text": text, "images": images or []})
-            self.history.append(
-                {"role": "system", "text": result.trace[-1]["message"]}
-            )
+            self.history.append({"role": "system", "text": result.trace[-1]["message"]})
             current_turn.reset(reset_token)
             return result
 
         prefix, body = stripped
         result.prefix = prefix
         result.body = body
-        ev = make_event(text, user_id=user_id, group_id=group_id,
-                        images=images, user_pm=user_pm)
+        ev = make_event(text, user_id=user_id, group_id=group_id, images=images, user_pm=user_pm)
         inbox_before = len(self.bot.inbox)
         self.history.append(
-            {"role": "user", "text": text, "images": images or [],
-             "user_id": str(user_id), "group_id": group_id}
+            {"role": "user", "text": text, "images": images or [], "user_id": str(user_id), "group_id": group_id}
         )
 
         # 路由：trie 类优先，同级 priority 小优先，再按注册顺序；
         # 每个命中拿事件深拷贝（真宿主同样），互不污染。
         candidates = sorted(
             HANDLERS,
-            key=lambda h: (_TYPE_RANK.get(h.get("kind", ""), 2),
-                           h.get("priority", 5), HANDLERS.index(h)),
+            key=lambda h: (_TYPE_RANK.get(h.get("kind", ""), 2), h.get("priority", 5), HANDLERS.index(h)),
         )
         invoked = False
         base_ev = ev
@@ -185,14 +180,13 @@ class MockHost:
             matched_entry = {
                 "sv": handler["sv"],
                 "handler": handler["func_name"],
-                "via": f'{handler["kind"]}:{info["trigger"]}',
+                "via": f"{handler['kind']}:{info['trigger']}",
             }
             result.matched.append(matched_entry)
             trace_entry: dict[str, Any] = {
                 "kind": "tool",
-                "tool": f'{handler["sv"]}.{handler["func_name"]}',
-                "args": {"command": ev.command, "text": ev.text,
-                         **({"regex": ev.regex_dict} if ev.regex_dict else {})},
+                "tool": f"{handler['sv']}.{handler['func_name']}",
+                "args": {"command": ev.command, "text": ev.text, **({"regex": ev.regex_dict} if ev.regex_dict else {})},
             }
             start = time.perf_counter()
             before = len(self.bot.inbox)
@@ -209,22 +203,16 @@ class MockHost:
             result.trace.append(trace_entry)
             invoked = True
             if handler.get("block"):
-                result.trace.append({"kind": "system", "message": f'{handler["sv"]} 阻断后续匹配（block=True）'})
+                result.trace.append({"kind": "system", "message": f"{handler['sv']} 阻断后续匹配（block=True）"})
                 break
 
         if not invoked:
-            result.trace.append(
-                {"kind": "system", "message": f"前缀 {prefix!r} 命中，但没有处理器匹配 body={body!r}"}
-            )
+            result.trace.append({"kind": "system", "message": f"前缀 {prefix!r} 命中，但没有处理器匹配 body={body!r}"})
 
         try:
-            result.replies = [
-                r.to_dict() for r in self.bot.inbox[inbox_before:]
-                if r.extra.get("turn") == token
-            ]
+            result.replies = [r.to_dict() for r in self.bot.inbox[inbox_before:] if r.extra.get("turn") == token]
             for record in self.bot.inbox[inbox_before:]:
-                self._append_history({"role": "bot", **record.to_dict()},
-                                     record.msg_id)
+                self._append_history({"role": "bot", **record.to_dict()}, record.msg_id)
             for trace in result.trace:
                 self.history.append({"role": "tool", **trace})
             return result
@@ -254,10 +242,7 @@ class MockHost:
                 break
         # 转后台：轮询/等待类处理器继续跑，后续回复在下一轮对话中带出
         trace_entry["background"] = True
-        trace_entry["note"] = (
-            f"处理器 {self.handler_timeout}s 未结束，已转后台继续；"
-            "后续消息将在下一轮对话中同步"
-        )
+        trace_entry["note"] = f"处理器 {self.handler_timeout}s 未结束，已转后台继续；后续消息将在下一轮对话中同步"
         self.background.append(task)
         task.add_done_callback(lambda t: self._forget_background(t))
 
@@ -269,8 +254,7 @@ class MockHost:
         if not task.cancelled():
             exc = task.exception()
             if exc is not None:
-                self.history.append({"role": "tool", "kind": "error",
-                                     "message": f"后台任务失败：{exc!r}"[:300]})
+                self.history.append({"role": "tool", "kind": "error", "message": f"后台任务失败：{exc!r}"[:300]})
 
     def _append_history(self, entry: dict[str, Any], msg_id: int = 0) -> None:
         """按记录 ID 去重追加（并发/重入下不记重）。"""

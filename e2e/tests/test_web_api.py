@@ -1,15 +1,16 @@
 """Web API 单测：state / chat / config / reset / startup（仅标准库）。"""
 
-import json
 import os
 import sys
+import json
 import threading
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from e2e.web.server import Handler, reset_for_tests  # noqa: E402
 from http.server import ThreadingHTTPServer  # noqa: E402
+
+from e2e.web.server import Handler, reset_for_tests  # noqa: E402
 
 
 def _serve():
@@ -75,7 +76,6 @@ def test_custom_prefix_via_api():
 
 
 def test_background_push_surfaces_via_history_poll():
-    import asyncio  # noqa: PLC0415
 
     server, port = _serve()
     try:
@@ -90,8 +90,7 @@ def test_background_push_surfaces_via_history_poll():
         inc = _get(port, f"/api/history?since={total}")
         assert inc["total"] > total
         assert all("_i" in h for h in inc["history"]), "历史条目应带绝对下标（前端去重用）"
-        texts = [s.get("text", "") for h in inc["history"]
-                 for s in h.get("segments", [])]
+        texts = [s.get("text", "") for h in inc["history"] for s in h.get("segments", [])]
         assert any("后台推送测试" in t for t in texts)
     finally:
         server.shutdown()

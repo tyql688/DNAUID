@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
+from dataclasses import field, dataclass
 
 
 @dataclass
@@ -48,11 +48,7 @@ def make_event(
     uid = str(user_id)
     # 真宿主由网关填充 sender 头像；mock 对数字 QQ 号拼官方直链（与 onebot 同源），
     # 下游 get_event_avatar 会经缓存下载，失败则走原有 fallback。
-    sender = (
-        {"avatar": f"http://q1.qlogo.cn/g?b=qq&nk={uid}&s=640", "nickname": uid}
-        if uid.isdigit()
-        else {}
-    )
+    sender = {"avatar": f"http://q1.qlogo.cn/g?b=qq&nk={uid}&s=640", "nickname": uid} if uid.isdigit() else {}
     return MockEvent(
         bot_id=bot_id,
         real_bot_id=bot_id,

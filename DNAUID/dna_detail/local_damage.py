@@ -25,17 +25,16 @@ from typing import TYPE_CHECKING
 from dataclasses import field, dataclass
 
 from ..dna_sdk.build import SdkBuild
+from ..dna_sdk.tables import SKILL_MAX_LEVEL
 from .local_attribute import (
     AttrContext,
     _role_element_cn,
     compute_attr_context,
 )
-from ..dna_sdk.tables import SKILL_MAX_LEVEL
 
 if TYPE_CHECKING:
     from PIL import Image
 
-    from ..utils.api.model import RoleDetail, WeaponDetail
 
 from gsuid_core.logger import logger
 
@@ -222,7 +221,8 @@ def draw_local_damage_section(
     con_inherit_slot: str | None = None
     if con_weapon_detail is not None:
         inherit_detail = resolve_inherit_source(
-            con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
+            con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail
+        )
         if inherit_detail is close_weapon_detail:
             con_inherit_slot = "close"
         elif inherit_detail is ranged_weapon_detail:

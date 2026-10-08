@@ -7,10 +7,12 @@
 - 同律武器不进装配（只影响自己的面板/伤害，TS 同理：skillWeapon 不进角色表）；
 - 未收录 id 直接跳过并记录（新版游戏先于数据包更新时不阻断整张卡片）。
 """
+
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Any
+from pathlib import Path
 
 from dna_builder_sdk import DataPackStore  # noqa: F401 （重导出，供调用方取数）
 from dna_builder_sdk.calc import Engine, build_state

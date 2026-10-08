@@ -6,10 +6,11 @@
 - 充盈溢出按三把真武器（近战/远程/非继承同律）重算后替换引擎值
   （引擎按自推导同律武器算，官方 loadout 以真武器为准；公式同 TS）。
 """
+
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
 from dataclasses import field, dataclass
-from typing import TYPE_CHECKING
 
 from gsuid_core.logger import logger
 
@@ -17,8 +18,7 @@ from ..dna_sdk import tables
 from ..dna_sdk.build import SdkBuild
 
 if TYPE_CHECKING:
-    from ..dna_sdk.build import SdkBuild as _SdkBuild
-    from ..utils.api.model import RoleDetail, WeaponDetail
+    from ..utils.api.model import RoleDetail
 
 # 面板 11 项属性的计算定义 ─────────────────────────────────────
 # 四维：数值型，最终 = 基础 × (1 + 加成/100)
@@ -55,10 +55,28 @@ _EXTRA_DISPLAY: dict[str, str] = {
 _RATE_KEYS_0 = ("充盈威力", "昂扬", "背水")
 _RATE_KEYS_1 = ("技能威力", "技能范围", "技能耐久", "技能效益")
 _EXTRA_KEYS = (
-    "增伤", "元素增伤", "物理增伤", "武器伤害", "技能伤害", "独立增伤",
-    "属性穿透", "无视防御", "技能无视防御", "追加伤害", "多重", "歧视",
-    "物理", "触发倍率", "充盈转化", "攻击范围", "技能倍率乘数", "技能倍率加数",
-    "暴击", "暴伤", "触发", "攻速",
+    "增伤",
+    "元素增伤",
+    "物理增伤",
+    "武器伤害",
+    "技能伤害",
+    "独立增伤",
+    "属性穿透",
+    "无视防御",
+    "技能无视防御",
+    "追加伤害",
+    "多重",
+    "歧视",
+    "物理",
+    "触发倍率",
+    "充盈转化",
+    "攻击范围",
+    "技能倍率乘数",
+    "技能倍率加数",
+    "暴击",
+    "暴伤",
+    "触发",
+    "攻速",
 )
 
 

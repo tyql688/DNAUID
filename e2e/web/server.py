@@ -10,13 +10,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+import asyncio
 import threading
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
+from pathlib import Path
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -32,8 +32,8 @@ def _run_loop_forever(loop: asyncio.AbstractEventLoop) -> None:
 
 class _ServerState:
     def __init__(self, public_host: str = "127.0.0.1", public_port: int = 8765) -> None:
-        import threading  # noqa: PLC0415
         import uuid as _uuid  # noqa: PLC0415
+        import threading  # noqa: PLC0415
 
         # 服务端重启后历史下标归零：epoch 变化时前端必须丢弃旧水位
         self.epoch = _uuid.uuid4().hex[:8]
@@ -43,12 +43,11 @@ class _ServerState:
 
         # loop 常驻独立线程：后台任务（登录轮询等）在请求之间也能推进
         self.loop = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(
-            target=_run_loop_forever, args=(self.loop,), daemon=True)
+        self._loop_thread = threading.Thread(target=_run_loop_forever, args=(self.loop,), daemon=True)
         self._loop_thread.start()
         from e2e.mock_host import MockHost, load_plugin  # noqa: PLC0415
-        from e2e.mock_host.loader import init_runtime  # noqa: PLC0415
         from e2e.mock_host.stubs import core_config  # noqa: PLC0415
+        from e2e.mock_host.loader import init_runtime  # noqa: PLC0415
 
         core_config.configure(public_host, public_port)
         self.report = load_plugin()
@@ -86,12 +85,12 @@ class _ServerState:
         sock.close()
         try:
             import uvicorn  # noqa: PLC0415
+
             from gsuid_core.web_app import app  # noqa: PLC0415
 
             thread = threading.Thread(
                 target=uvicorn.run,
-                kwargs={"app": app, "host": "127.0.0.1", "port": login_port,
-                        "log_level": "warning"},
+                kwargs={"app": app, "host": "127.0.0.1", "port": login_port, "log_level": "warning"},
                 daemon=True,
             )
             thread.start()
@@ -105,12 +104,11 @@ def _normalize_upload_image(data_url: str) -> str:
     """宿主侧归一化：浏览器 dataURL 统一转 PNG（上游只认 png/jpeg/base64）。"""
     if not isinstance(data_url, str) or not data_url.startswith("data:"):
         return data_url
-    if data_url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,",
-                             "base64://")):
+    if data_url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "base64://")):
         return data_url
     try:
-        import base64  # noqa: PLC0415
         import io as _io  # noqa: PLC0415
+        import base64  # noqa: PLC0415
 
         from PIL import Image  # noqa: PLC0415
 
@@ -184,8 +182,7 @@ class Handler(BaseHTTPRequestHandler):
         target = f"http://127.0.0.1:{state.login_port}{self.path}"
         length = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(length) if length > 0 else None
-        headers = {k: v for k, v in self.headers.items()
-                   if k.lower() not in ("host", "content-length")}
+        headers = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length")}
         try:
             req = urllib.request.Request(target, data=body, headers=headers, method=self.command)
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -222,15 +219,17 @@ class Handler(BaseHTTPRequestHandler):
             from e2e.mock_host import HANDLERS, PLUGIN_INFO  # noqa: PLC0415
             from e2e.mock_host.stubs import get_active_prefixes  # noqa: PLC0415
 
-            self._json({
-                "epoch": state.epoch,
-                "started_at": state.started_at,
-                "prefixes": get_active_prefixes(),
-                "plugin": dict(PLUGIN_INFO),
-                "handlers": len(HANDLERS),
-                "report": state.report,
-                "history": state.host.history[-200:],
-            })
+            self._json(
+                {
+                    "epoch": state.epoch,
+                    "started_at": state.started_at,
+                    "prefixes": get_active_prefixes(),
+                    "plugin": dict(PLUGIN_INFO),
+                    "handlers": len(HANDLERS),
+                    "report": state.report,
+                    "history": state.host.history[-200:],
+                }
+            )
             return
         if parsed.path == "/api/history":
             state = _get_state()
@@ -245,8 +244,7 @@ class Handler(BaseHTTPRequestHandler):
                 item = dict(entry)
                 item["_i"] = since + index
                 items.append(item)
-            self._json({"history": items, "total": len(state.host.history),
-                        "epoch": state.epoch})
+            self._json({"history": items, "total": len(state.host.history), "epoch": state.epoch})
             return
         if parsed.path == "/api/commands":
             _get_state()  # 确保插件已加载（_serve 后首次请求可能是本接口）
@@ -254,15 +252,19 @@ class Handler(BaseHTTPRequestHandler):
 
             groups: dict[str, list] = {}
             for h in HANDLERS:
-                groups.setdefault(h["sv"], []).append({
-                    "kind": h["kind"],
-                    "triggers": [str(t) for t in h["triggers"]],
-                    "block": bool(h.get("block")),
-                })
-            self._json({
-                "groups": [{"sv": sv, "items": items} for sv, items in groups.items()],
-                "count": sum(len(v) for v in groups.values()),
-            })
+                groups.setdefault(h["sv"], []).append(
+                    {
+                        "kind": h["kind"],
+                        "triggers": [str(t) for t in h["triggers"]],
+                        "block": bool(h.get("block")),
+                    }
+                )
+            self._json(
+                {
+                    "groups": [{"sv": sv, "items": items} for sv, items in groups.items()],
+                    "count": sum(len(v) for v in groups.values()),
+                }
+            )
             return
         self._json({"error": "not found"}, status=404)
 
@@ -324,7 +326,9 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     _get_state()  # 预加载插件，失败信息直接打屏
     from e2e.mock_host.stubs import get_active_prefixes  # noqa: PLC0415
 
-    print(f"[e2e] mock 宿主就绪：前缀={get_active_prefixes()} 处理器={len(__import__('e2e.mock_host', fromlist=['HANDLERS']).HANDLERS)}")
+    print(
+        f"[e2e] mock 宿主就绪：前缀={get_active_prefixes()} 处理器={len(__import__('e2e.mock_host', fromlist=['HANDLERS']).HANDLERS)}"
+    )
     print(f"[e2e] 聊天界面：http://{host}:{port}/")
     server = ThreadingHTTPServer((host, port), Handler)
     try:

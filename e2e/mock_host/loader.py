@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
-import importlib
-import pkgutil
 import sys
+import pkgutil
+import importlib
 from typing import Any
 
 from . import stubs
@@ -26,9 +26,9 @@ def _dna_packages() -> list[str]:
 
 def ensure_demo_handlers() -> dict[str, Any]:
     """注册内置演示指令，保证 Web 聊天在插件未加载时也可交互。"""
+    from gsuid_core.sv import SV  # noqa: PLC0415
     from gsuid_core.bot import Bot  # noqa: PLC0415
     from gsuid_core.models import Event  # noqa: PLC0415
-    from gsuid_core.sv import SV  # noqa: PLC0415
 
     if any(h.get("func_name") == "demo_ping" for h in stubs.HANDLERS):
         return {"ok": True, "cached": True}

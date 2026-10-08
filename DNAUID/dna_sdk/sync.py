@@ -3,6 +3,7 @@
 语义沿用旧 dob_pack：本地有包直接用；版本落后则下载替换；全程持锁串行；
 外部错误收敛成 SdkPackError 一种。数据目录沿用旧 dob 目录。
 """
+
 from __future__ import annotations
 
 import asyncio

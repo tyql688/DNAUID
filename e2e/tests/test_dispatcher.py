@@ -1,14 +1,14 @@
 """分发器单测：前缀剥离 / 四种路由 / 自定义前缀 / 图片与工具回显（仅标准库）。"""
 
-import asyncio
 import os
 import sys
+import asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from e2e.mock_host import (  # noqa: E402
-    MessageSegment,
     MockHost,
+    MessageSegment,
     install,
     reset_state,
     set_custom_prefixes,
@@ -40,12 +40,14 @@ def _register_routes():
 
     @sv.on_fullmatch("图文", block=True)
     async def _rich(bot, ev):
-        await bot.send([
-            MessageSegment.text("看图："),
-            MessageSegment.image(b"\x89PNG" + b"1" * 8),
-            MessageSegment.at("10001"),
-            MessageSegment.node([MessageSegment.text("转发一"), MessageSegment.text("转发二")]),
-        ])
+        await bot.send(
+            [
+                MessageSegment.text("看图："),
+                MessageSegment.image(b"\x89PNG" + b"1" * 8),
+                MessageSegment.at("10001"),
+                MessageSegment.node([MessageSegment.text("转发一"), MessageSegment.text("转发二")]),
+            ]
+        )
 
 
 def _fresh_host():

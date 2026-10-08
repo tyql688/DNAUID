@@ -7,11 +7,11 @@
 
 from __future__ import annotations
 
-import base64
 import io
-from dataclasses import dataclass, field
+import base64
 from os import PathLike
 from typing import Any
+from dataclasses import field, dataclass
 
 
 def _image_to_data_url(data: Any) -> tuple[str, str]:
@@ -44,7 +44,7 @@ def _image_to_data_url(data: Any) -> tuple[str, str]:
         return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}", f"{len(raw)}B"
     if isinstance(data, str):
         if data.startswith("base64://"):
-            raw = data[len("base64://"):]
+            raw = data[len("base64://") :]
             return f"data:image/jpeg;base64,{raw}", "base64"
         if data.startswith("data:"):
             return data, "base64"
@@ -81,25 +81,25 @@ class MessageSegment:
         self.data = data
 
     @classmethod
-    def text(cls, text: str) -> "MessageSegment":
+    def text(cls, text: str) -> MessageSegment:
         return cls("text", {"text": str(text)})
 
     @classmethod
-    def image(cls, data: Any) -> "MessageSegment":
+    def image(cls, data: Any) -> MessageSegment:
         return cls("image", data)
 
     @classmethod
-    def at(cls, user_id: str | int) -> "MessageSegment":
+    def at(cls, user_id: str | int) -> MessageSegment:
         return cls("at", {"user_id": str(user_id)})
 
     @classmethod
-    def node(cls, items: Any) -> "MessageSegment":
+    def node(cls, items: Any) -> MessageSegment:
         if not isinstance(items, list):
             items = [items]
         return cls("node", items)
 
     @classmethod
-    def reply(cls, message_id: str | int) -> "MessageSegment":
+    def reply(cls, message_id: str | int) -> MessageSegment:
         return cls("reply", {"message_id": str(message_id)})
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -200,5 +200,4 @@ class SentMessage:
         return any(s.get("kind") == "image" for s in self.segments)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"segments": self.segments, "at_sender": self.at_sender,
-                "extra": self.extra, "msg_id": self.msg_id}
+        return {"segments": self.segments, "at_sender": self.at_sender, "extra": self.extra, "msg_id": self.msg_id}

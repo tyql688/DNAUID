@@ -106,17 +106,21 @@ curl -X POST http://127.0.0.1:8765/api/startup
 
 ```python
 import asyncio, sys
+
 sys.path.insert(0, ".")
 from e2e.mock_host import install, load_plugin, reset_state, MockHost
 from e2e.mock_host.loader import init_runtime
 
+
 async def main():
-    install(); reset_state()
+    install()
+    reset_state()
     load_plugin()
-    await init_runtime()          # 真实 sqlite 建表
-    host = MockHost()             # handler_timeout / first_reply_grace 可配
+    await init_runtime()  # 真实 sqlite 建表
+    host = MockHost()  # handler_timeout / first_reply_grace 可配
     r = await host.chat("dna绑定1234567890123", user_id="u1")
     print(r.matched, r.replies, r.trace)
+
 
 asyncio.run(main())
 ```

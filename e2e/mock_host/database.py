@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 
 def db_path() -> Path:
@@ -18,11 +18,11 @@ async def init_plugin_db(reset: bool = False) -> dict[str, Any]:
     Args:
         reset: 为 True 时删除旧库重建（测试隔离用）。
     """
-    from sqlalchemy import create_engine, text  # noqa: PLC0415
     from sqlmodel import SQLModel  # noqa: PLC0415
+    from sqlalchemy import text, create_engine  # noqa: PLC0415
 
-    from gsuid_core.utils.database.base_models import init_database  # type: ignore[import-not-found]  # noqa: PLC0415
     from gsuid_core.utils.database.startup import exec_list  # noqa: PLC0415
+    from gsuid_core.utils.database.base_models import init_database  # type: ignore[import-not-found]  # noqa: PLC0415
 
     path = db_path()
     if reset and path.exists():

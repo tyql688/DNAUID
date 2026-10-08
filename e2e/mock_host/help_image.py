@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 W = 1000
 MARGIN = 36
@@ -60,15 +60,13 @@ def _font(size: int):  # type: ignore[no-untyped-def]
 
     if size not in _font_cache:
         path = _find_font()
-        _font_cache[size] = (
-            ImageFont.truetype(str(path), size=size) if path else ImageFont.load_default()
-        )
+        _font_cache[size] = ImageFont.truetype(str(path), size=size) if path else ImageFont.load_default()
     return _font_cache[size]
 
 
 def _wrap(draw: Any, text: str, font: Any, max_w: int) -> list[str]:
     lines, current = [], ""
-    for ch in (text or ""):
+    for ch in text or "":
         if draw.textlength(current + ch, font=font) <= max_w:
             current += ch
         else:
@@ -159,19 +157,27 @@ def draw_plugin_help(
             text_w = col_w - 118
             desc_lines = _wrap(ImageDraw.Draw(Image.new("RGB", (8, 8))), desc, f_desc, text_w)[:3]
             card_h = max(104, 30 + len(desc_lines) * 30 + 30)
-            rows.append({
-                "name": name, "desc_lines": desc_lines, "cmd": cmd,
-                "lock": bool(item.get("need_admin")), "h": card_h,
-                "icon": _find_icon(icon_path, name),
-            })
+            rows.append(
+                {
+                    "name": name,
+                    "desc_lines": desc_lines,
+                    "cmd": cmd,
+                    "lock": bool(item.get("need_admin")),
+                    "h": card_h,
+                    "icon": _find_icon(icon_path, name),
+                }
+            )
         group_desc = str((group or {}).get("desc", "")) if isinstance(group, dict) else ""
         cards.append({"group": str(group_name), "desc": group_desc, "rows": rows})
 
     body_h = 0
     for block in cards:
         n = len(block["rows"])
-        rows_h = sum(max(block["rows"][i]["h"], block["rows"][i + 1]["h"] if i + 1 < n else 0)
-                     for i in range(0, n, column)) if n else 0
+        rows_h = (
+            sum(max(block["rows"][i]["h"], block["rows"][i + 1]["h"] if i + 1 < n else 0) for i in range(0, n, column))
+            if n
+            else 0
+        )
         block["h"] = 84 + rows_h + (16 * ((n + column - 1) // column)) + 10
         body_h += block["h"]
 
@@ -226,7 +232,7 @@ def draw_plugin_help(
         cy = y + 92
         rows = block["rows"]
         for i in range(0, len(rows), column):
-            line = rows[i:i + column]
+            line = rows[i : i + column]
             line_h = max(r["h"] for r in line)
             for j, card in enumerate(line):
                 x0 = MARGIN + 18 + j * (col_w + 20)

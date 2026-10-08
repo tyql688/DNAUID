@@ -1,7 +1,7 @@
 """消息段序列化单测（仅标准库）。"""
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -27,9 +27,7 @@ def test_at_segment():
 
 
 def test_node_segment_flattens_children():
-    seg = serialize_segment(
-        MessageSegment.node([MessageSegment.text("a"), MessageSegment.at("1")])
-    )
+    seg = serialize_segment(MessageSegment.node([MessageSegment.text("a"), MessageSegment.at("1")]))
     assert seg["kind"] == "node"
     assert seg["count"] == 2
     assert seg["children"][0]["text"] == "a"

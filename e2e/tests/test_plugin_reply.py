@@ -4,9 +4,9 @@
 执行：``uv run --group e2e pytest e2e/tests/test_plugin_reply.py -v``
 """
 
-import asyncio
 import os
 import sys
+import asyncio
 
 import pytest
 
@@ -51,8 +51,8 @@ def test_help_reply_contains_image(host):
 
 def test_help_uses_real_gsuid_renderer(host):
     """帮助图必须走上游真实 get_new_help（输出 JPEG），而非本地占位渲染。"""
-    import base64
     import io as _io
+    import base64
 
     _host, _report = host
     result = asyncio.run(_host.chat("dna帮助"))

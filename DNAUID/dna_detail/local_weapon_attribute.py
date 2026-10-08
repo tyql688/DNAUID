@@ -3,10 +3,11 @@
 口径以 dna-builder TS 为准：面板数值全部取引擎 ``weapon_panel``（数据包基值，
 含精通/锻造/各类加成）；显示名按武器「伤害类型」渲染；数据包未收录显示「无法计算」。
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from dataclasses import field, dataclass
+from dataclasses import dataclass
 
 from ..dna_sdk import tables
 from ..dna_sdk.build import SdkBuild
@@ -160,29 +161,15 @@ def con_weapon_panel(build: SdkBuild, con_detail: WeaponDetail) -> WeaponPanel |
         return None
     scope = _char_scope(build)
     mod_bonus = _con_mod_bonus(con_detail)
-    forge = (
-        tables.weapon_forge_bonus(record, con_detail.skillLevel)
-        if _forge_effective(role, record)
-        else {}
-    )
+    forge = tables.weapon_forge_bonus(record, con_detail.skillLevel) if _forge_effective(role, record) else {}
 
-    cri_bonus = (
-        mod_bonus.get("暴击率", 0.0) + scope.get("暴击", 0.0)
-        + float(forge.get("暴击", 0.0)) * 100
-    )
-    crd_bonus = (
-        mod_bonus.get("暴击伤害", 0.0) + scope.get("暴伤", 0.0)
-        + float(forge.get("暴伤", 0.0)) * 100
-    )
+    cri_bonus = mod_bonus.get("暴击率", 0.0) + scope.get("暴击", 0.0) + float(forge.get("暴击", 0.0)) * 100
+    crd_bonus = mod_bonus.get("暴击伤害", 0.0) + scope.get("暴伤", 0.0) + float(forge.get("暴伤", 0.0)) * 100
     speed_bonus = min(
-        mod_bonus.get("攻击速度", 0.0) + scope.get("攻速", 0.0)
-        + float(forge.get("攻速", 0.0)) * 100,
+        mod_bonus.get("攻击速度", 0.0) + scope.get("攻速", 0.0) + float(forge.get("攻速", 0.0)) * 100,
         200.0,
     )
-    trigger_bonus = (
-        mod_bonus.get("触发概率", 0.0) + scope.get("触发", 0.0)
-        + float(forge.get("触发", 0.0)) * 100
-    )
+    trigger_bonus = mod_bonus.get("触发概率", 0.0) + scope.get("触发", 0.0) + float(forge.get("触发", 0.0)) * 100
     physical_bonus = mod_bonus.get("物理", 0.0) + float(forge.get("物理", 0.0)) * 100
     atk_bonus = mod_bonus.get("攻击", 0.0)
 

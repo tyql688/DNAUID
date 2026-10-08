@@ -9,7 +9,6 @@ mock 宿主通过白名单 import hook 直接调用**真实的** ``get_new_help`
 
 from __future__ import annotations
 
-import sys
 import urllib.request
 from pathlib import Path
 

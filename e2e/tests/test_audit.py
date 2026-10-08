@@ -13,8 +13,6 @@ install()
 
 def test_audit_no_errors():
     report = run_audit()
-    assert not report["errors"], (
-        "mock 宿主有未覆盖的依赖:\n"
-        + "\n".join(f"[{g['kind']}] {g.get('module', '')} {g.get('name')} :: {g.get('hint')}"
-                    for g in report["errors"])
+    assert not report["errors"], "mock 宿主有未覆盖的依赖:\n" + "\n".join(
+        f"[{g['kind']}] {g.get('module', '')} {g.get('name')} :: {g.get('hint')}" for g in report["errors"]
     )

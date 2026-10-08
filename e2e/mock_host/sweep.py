@@ -12,11 +12,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
 import io
 import sys
 import time
+import base64
+import asyncio
+from typing import Any
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -25,8 +26,19 @@ if str(ROOT) not in sys.path:
 
 # regex handler -> 样本（按 sv 名匹配，找不到的用通用回退）
 REGEX_SAMPLES: list[tuple[str, list[str]]] = [
-    ("别名", ["添加测试角色别名测试名", "删除测试角色别名测试名", "测试角色别名", "武器测试别名列表",
-              "卡米拉别名", "添加卡米拉别名卡姐", "卡姐别名", "删除卡米拉别名卡姐"]),
+    (
+        "别名",
+        [
+            "添加测试角色别名测试名",
+            "删除测试角色别名测试名",
+            "测试角色别名",
+            "武器测试别名列表",
+            "卡米拉别名",
+            "添加卡米拉别名卡姐",
+            "卡姐别名",
+            "删除卡米拉别名卡姐",
+        ],
+    ),
     ("详情卡片", ["测试角色面板", "测试角色信息", "测试角色详情", "男主面板"]),
     ("攻略", ["测试角色攻略", "刻舟攻略", "卡米拉攻略"]),
     ("密函订阅", ["订阅调停密函", "订阅角色调停密函", "取消订阅调停密函", "订阅密函周期8:30"]),
@@ -54,13 +66,17 @@ async def run_upload_chain(host: Any, prefix: str) -> dict:
         failed = [t for t in tools if t.get("ok") is False]
         segs = [s for r in res.replies for s in r.get("segments", [])]
         first_text = next((s.get("text", "") for s in segs if s.get("kind") == "text"), "")
-        out = {"text": text, "ok": not failed,
-               "error": (failed[0].get("error", "") if failed else "")[:200],
-               "reply": first_text[:120], "segments": segs}
+        out = {
+            "text": text,
+            "ok": not failed,
+            "error": (failed[0].get("error", "") if failed else "")[:200],
+            "reply": first_text[:120],
+            "segments": segs,
+        }
         steps.append(out)
         return out
 
-    s1 = await step("上传男主面板图", [img])
+    await step("上传男主面板图", [img])
     s2 = await step("男主面板图列表")
     image_id = ""
     if s2["ok"]:
@@ -75,8 +91,8 @@ async def run_upload_chain(host: Any, prefix: str) -> dict:
     else:
         steps.append({"text": "(skip delete: no id)", "ok": True, "error": "", "reply": ""})
     failed = [s for s in steps if not s["ok"]]
-    return {"steps": steps, "ok": not failed,
-            "error": "; ".join(s["error"] for s in failed)[:300]}
+    return {"steps": steps, "ok": not failed, "error": "; ".join(s["error"] for s in failed)[:300]}
+
 
 SKIP_SUBSTR = ("删除全部UID",)  # 破坏性指令只在隔离用户下跑（见下）
 
@@ -120,20 +136,24 @@ def build_cases(prefix: str) -> list[dict]:
                 body = text
             if any(s in body for s in SKIP_SUBSTR):
                 continue
-            cases.append({"sv": h["sv"], "via": f'{h["kind"]}:{text[:40]}',
-                          "text": prefix + body, "images": []})
+            cases.append({"sv": h["sv"], "via": f"{h['kind']}:{text[:40]}", "text": prefix + body, "images": []})
         if h["kind"] == "regex":
             for sample in _regex_samples(h["sv"]):
                 images = [_sample_image()] if ("上传" in h["sv"] and _sample_image()) else []
-                cases.append({"sv": h["sv"], "via": f'regex:{sample[:40]}',
-                              "text": prefix + sample, "images": images})
+                cases.append({"sv": h["sv"], "via": f"regex:{sample[:40]}", "text": prefix + sample, "images": images})
     # 破坏性指令：专用隔离用户单独跑
     for h in HANDLERS:
         for trigger in h["triggers"]:
             if h["kind"] == "fullmatch" and any(s in str(trigger) for s in SKIP_SUBSTR):
-                cases.append({"sv": h["sv"], "via": f'fullmatch:{trigger}',
-                              "text": prefix + str(trigger), "images": [],
-                              "user": "sweep_destructive"})
+                cases.append(
+                    {
+                        "sv": h["sv"],
+                        "via": f"fullmatch:{trigger}",
+                        "text": prefix + str(trigger),
+                        "images": [],
+                        "user": "sweep_destructive",
+                    }
+                )
     return cases
 
 
@@ -188,9 +208,16 @@ async def run_sweep() -> dict:
     host = MockHost(handler_timeout=25.0, first_reply_grace=1.0)
     chain = await run_upload_chain(host, prefix)
     if not chain["ok"]:
-        chain_case = {"text": prefix + "上传链路", "sv": "upload-chain",
-                      "via": "scenario", "matched": 1, "replies": 0,
-                      "ok": False, "error": chain["error"], "ms": 0}
+        chain_case = {
+            "text": prefix + "上传链路",
+            "sv": "upload-chain",
+            "via": "scenario",
+            "matched": 1,
+            "replies": 0,
+            "ok": False,
+            "error": chain["error"],
+            "ms": 0,
+        }
     else:
         chain_case = None
     results: list[dict] = []
@@ -198,29 +225,41 @@ async def run_sweep() -> dict:
         user = case.get("user", f"sweep{i:03d}")
         started = time.perf_counter()
         try:
-            res = await host.chat(case["text"], user_id=user,
-                                  group_id=case.get("group_id"), images=case["images"])
+            res = await host.chat(case["text"], user_id=user, group_id=case.get("group_id"), images=case["images"])
             tools = [t for t in res.trace if t.get("kind") == "tool"]
             failed = [t for t in tools if t.get("ok") is False]
             blanks = _image_blank_flags(res.replies)
             err = failed[0].get("error", "")[:200] if failed else ""
             if blanks:
                 err = (err + " | " + ", ".join(blanks))[:200]
-            results.append({
-                "text": case["text"], "sv": case["sv"], "via": case["via"],
-                "matched": len(res.matched), "replies": len(res.replies),
-                "ok": not failed and not blanks,
-                "error": err,
-                "ms": round((time.perf_counter() - started) * 1000),
-            })
+            results.append(
+                {
+                    "text": case["text"],
+                    "sv": case["sv"],
+                    "via": case["via"],
+                    "matched": len(res.matched),
+                    "replies": len(res.replies),
+                    "ok": not failed and not blanks,
+                    "error": err,
+                    "ms": round((time.perf_counter() - started) * 1000),
+                }
+            )
         except Exception as exc:  # noqa: BLE001
-            results.append({"text": case["text"], "sv": case["sv"], "via": case["via"],
-                            "matched": 0, "replies": 0, "ok": False,
-                            "error": repr(exc)[:200], "ms": 0})
+            results.append(
+                {
+                    "text": case["text"],
+                    "sv": case["sv"],
+                    "via": case["via"],
+                    "matched": 0,
+                    "replies": 0,
+                    "ok": False,
+                    "error": repr(exc)[:200],
+                    "ms": 0,
+                }
+            )
     if chain_case is not None:
         results.append(chain_case)
-    return {"cases": results, "prefix": prefix, "chain": chain,
-            "failures": [r for r in results if not r["ok"]]}
+    return {"cases": results, "prefix": prefix, "chain": chain, "failures": [r for r in results if not r["ok"]]}
 
 
 def main() -> int:
@@ -229,8 +268,10 @@ def main() -> int:
     total = len(report["cases"])
     failures = report["failures"]
     unmatched = [r for r in report["cases"] if not r["matched"]]
-    print(f"\n共 {total} 个用例，失败 {len(failures)}，未命中路由 {len(unmatched)}，"
-          f"耗时 {time.perf_counter() - started:.0f}s")
+    print(
+        f"\n共 {total} 个用例，失败 {len(failures)}，未命中路由 {len(unmatched)}，"
+        f"耗时 {time.perf_counter() - started:.0f}s"
+    )
     for r in failures:
         print(f"FAIL [{r['sv']}] {r['text']} :: {r['error']}")
     for r in unmatched:

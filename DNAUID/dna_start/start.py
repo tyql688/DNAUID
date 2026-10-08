@@ -10,7 +10,7 @@ async def all_start() -> None:
     await startup()
 
     # DOB 数据包：首次没有数据时同步等待初始化；已有数据时后台检查更新（失败不影响启动）。
-    from ..dna_sdk import SdkPackError, init_if_needed, is_data_ready, startup_auto_sync
+    from ..dna_sdk import SdkPackError, is_data_ready, init_if_needed, startup_auto_sync
     from ..dna_config.dna_config import DNAConfig
 
     if DNAConfig.get_config("DobAutoUpdate").data:

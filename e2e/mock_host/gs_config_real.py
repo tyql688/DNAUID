@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from pathlib import Path
 
 
 class StringConfig:
@@ -86,9 +86,9 @@ def make_pic_gen_config(config_dir: Path) -> StringConfig:
 
 def make_database_config(config_dir: Path) -> StringConfig:
     from gsuid_core.utils.plugins_config.models import (  # type: ignore[import-not-found]
-        GsBoolConfig,
         GsIntConfig,
         GsStrConfig,
+        GsBoolConfig,
     )
 
     return StringConfig(

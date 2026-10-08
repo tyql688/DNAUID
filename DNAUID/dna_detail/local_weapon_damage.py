@@ -5,6 +5,7 @@
 - 不含防御乘区（与 dna-builder 界面 expectedDamage 一致）；
 - 角色项取引擎角色属性，同律/近战/远程武器项取引擎武器面板与槽位实例。
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -12,9 +13,8 @@ from typing import TYPE_CHECKING
 from .local_attribute import AttrContext
 from .local_weapon_attribute import (
     WeaponPanel,
-    resolve_weapon_record,
     slot_damage_bonus,
-    weapon_panel_for,
+    resolve_weapon_record,
 )
 
 if TYPE_CHECKING:
@@ -69,8 +69,7 @@ def compute_weapon_damage(
         con = build.weapons.get("con")
         panel = con_weapon_panel(build, con) if con is not None else None
         panel_raw = (
-            {"攻击": panel.attack, "暴击": panel.cri, "暴伤": panel.crd,
-             "攻速": panel.speed, "触发": panel.trigger}
+            {"攻击": panel.attack, "暴击": panel.cri, "暴伤": panel.crd, "攻速": panel.speed, "触发": panel.trigger}
             if panel is not None and panel.attack is not None
             else None
         )
@@ -96,9 +95,7 @@ def compute_weapon_damage(
     role: RoleDetail = build.role
     weapon_detail: WeaponDetail | None = build.weapons.get(slot)
     inherit_detail: WeaponDetail | None = build.weapons.get(inherit_slot) if inherit_slot else None
-    skill_record, _is_skill = (
-        resolve_weapon_record(weapon_detail, role) if weapon_detail is not None else (None, False)
-    )
+    skill_record, _is_skill = resolve_weapon_record(weapon_detail, role) if weapon_detail is not None else (None, False)
     damage_record, _ = (
         resolve_weapon_record(inherit_detail or weapon_detail, role)
         if (inherit_detail or weapon_detail) is not None
@@ -132,8 +129,10 @@ def compute_weapon_damage(
 
         con = build.weapons.get("con")
         fractions = _con_mod_bonus_fractions(con) if con is not None else {}
-        weapon_damage_bonus = {k: float(fractions.get(k) or 0.0) for k in (
-            "增伤", "元素增伤", "物理增伤", "武器伤害", "独立增伤", "追加伤害", "触发倍率")}
+        weapon_damage_bonus = {
+            k: float(fractions.get(k) or 0.0)
+            for k in ("增伤", "元素增伤", "物理增伤", "武器伤害", "独立增伤", "追加伤害", "触发倍率")
+        }
     else:
         weapon_damage_bonus = slot_damage_bonus(build, damage_slot)
     trigger_add = _trigger_multiplier(damage_type, weapon_damage_bonus["触发倍率"])

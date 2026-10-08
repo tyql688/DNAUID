@@ -7,10 +7,10 @@ pytest：``e2e/tests/test_audit.py`` 调用同一入口。
 from __future__ import annotations
 
 import ast
-import importlib
 import sys
-from pathlib import Path
+import importlib
 from typing import Any
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN_DIR = ROOT / "DNAUID"
@@ -69,18 +69,26 @@ def check_imports() -> list[dict[str, Any]]:
             mod = importlib.import_module(module)
             target = getattr(mod, name)
             if isinstance(target, stubs.Dummy):
-                gaps.append({"kind": "dummy", "module": module, "name": name,
-                             "lineno": lineno, "hint": "命中通用 Dummy，无真实行为"})
+                gaps.append(
+                    {
+                        "kind": "dummy",
+                        "module": module,
+                        "name": name,
+                        "lineno": lineno,
+                        "hint": "命中通用 Dummy，无真实行为",
+                    }
+                )
         except Exception as exc:  # noqa: BLE001
-            gaps.append({"kind": "import-error", "module": module, "name": name,
-                         "lineno": lineno, "hint": repr(exc)[:200]})
+            gaps.append(
+                {"kind": "import-error", "module": module, "name": name, "lineno": lineno, "hint": repr(exc)[:200]}
+            )
     return gaps
 
 
 def check_attrs() -> list[dict[str, Any]]:
     from e2e.mock_host import MockBot, MessageSegment  # noqa: PLC0415
     from e2e.mock_host.event import MockEvent  # noqa: PLC0415
-    from e2e.mock_host.stubs import Dummy, gs_subscribe, logger, scheduler  # noqa: PLC0415
+    from e2e.mock_host.stubs import Dummy, logger, gs_subscribe  # noqa: PLC0415
 
     gaps: list[dict[str, Any]] = []
     usage = collect_attr_usage()
@@ -110,8 +118,7 @@ def run_audit() -> dict[str, Any]:
     # Dummy 命中不全是问题：类型注解/未执行分支允许；但列出来让人 eyeball
     dummies = [g for g in import_gaps if g["kind"] == "dummy"]
     errors = [g for g in import_gaps if g["kind"] != "dummy"] + attr_gaps
-    return {"errors": errors, "dummies": dummies,
-            "summary": f"{len(errors)} errors, {len(dummies)} dummy-hits"}
+    return {"errors": errors, "dummies": dummies, "summary": f"{len(errors)} errors, {len(dummies)} dummy-hits"}
 
 
 def main() -> int:
