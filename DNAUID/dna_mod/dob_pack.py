@@ -26,9 +26,11 @@ zip 内：
    （验证：芙罗拉 基础攻击 26 × 12.5522 = 326.36，与 wiki 满级行完全一致；
    莉兹贝尔 80 级 攻击 301.25 / 生命 1130，与真实游戏截图一致。）
 
-2. **角色加成（char.加成）**：即 wiki 技能页「伤害/增益」解锁被动的**聚合总值**
-   （验证：芙罗拉 加成.昂扬 0.15 = wiki 两条被动 6% + 9%）。转换成面板加成条目，
-   数值 ×100 变百分比，无解锁条件（视为全部计入，与面板模块既有约定一致）。
+2. **角色加成（char.加成）**：即技能解锁被动的**两档合计值**
+   （验证：芙罗拉 加成.昂扬 0.15 = 6% + 9%；贝蕾妮卡 攻击 0.5 = 20% + 30%）。
+   转换成面板加成条目（数值 ×100 变百分比），同时按**写入顺序**额外产出
+   ``passives``：第 i 项对应 ``char.技能[i]``（实测 wiki 标签序 == 技能序），
+   供查询侧按技能 4 级 / 8 级还原档位。
 
 3. **魔之楔属性**：数据包里每个 id 一条记录（品质/档位即 id 本身），
    数值字段（攻击/生命/昂扬/属性攻击/暴击…）是 **满级值（小数）**。
@@ -44,8 +46,9 @@ zip 内：
 更新流程
 --------
 ``sync(force)``：拉 versions.json → 与本地版本比对 → 下载整包 → 内存解包转换
-→ 原子写 dob_data.json。手动与自动更新共用一个 ``asyncio.Lock`` 串行执行；
-临时文件按进程与时间戳命名，避免两次更新争用同一 ``.tmp`` 导致替换失败。
+→ **校验必需字段** → 原子写 dob_data.json。手动与自动更新共用一个 ``asyncio.Lock``
+串行执行；临时文件按进程与时间戳命名，避免两次更新争用同一 ``.tmp`` 导致替换失败。
+**校验不通过就不写盘**（旧数据继续可用）；版本号相同但本地结构不可用时也会重下。
 旧 wiki 抓取器（dnabbs wiki / 官方 config 双源）已废弃，全部数据改由本模块提供。
 
 数据文件位于 ``data/DNAUID/resource/dob/dob_data.json``（路径定义统一在
@@ -82,6 +85,7 @@ from .dob_types import (
     BonusZones,
     SkillEntry,
     SkillField,
+    PassiveEntry,
     WeaponRecord,
     ConvertedMods,
     ConvertedChars,
@@ -201,6 +205,9 @@ QUALITY_TO_INT = {"白": 1, "绿": 2, "蓝": 3, "紫": 4, "金": 5}
 # 品质 → 魔之楔等级上限（与 dna-builder LeveledMod.modQualityMaxLevel 一致）
 QUALITY_MAX_LEVEL = {1: 3, 2: 3, 3: 5, 4: 5, 5: 10}
 
+# 角色基础值必需字段（缺失即判数据包异常，不静默补 0）
+_MAIN_ATTR_KEYS = ("攻击", "生命", "护盾", "防御", "神智")
+
 # 角色数据里不参与面板转换的字段（数值字段之外的全部排除）
 _CHAR_SKIP_KEYS = frozenset(
     {
@@ -296,9 +303,12 @@ def _numeric_field(value: RawValue) -> bool:
 # ── 原始包取值：逐处 isinstance 收窄，不用 Any ─────────────
 
 
-def _id_str(record: RawRecord, key: str) -> str:
-    """id 字段转字符串（与 ``str(record.get(key))`` 同口径）"""
-    return str(record.get(key))
+def _id_str(record: RawRecord, key: str) -> str | None:
+    """id 字段转字符串；缺失或类型不符返回 None（不写出字面量 "None" 键）"""
+    value = record.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    return str(value)
 
 
 def _str(record: RawRecord, key: str) -> str | None:
@@ -320,9 +330,17 @@ def _num(record: RawRecord, key: str) -> int | float | None:
 
 
 def _num_or(record: RawRecord, key: str, default: float) -> float:
-    """数值字段，缺失取 default"""
+    """数值字段，缺失取 default（仅用于可缺省项）"""
     value = _num(record, key)
     return default if value is None else value
+
+
+def _required_num(record: RawRecord, key: str, owner: str) -> float:
+    """必需数值字段；缺失 / 类型不符即判数据包异常（不静默补 0）"""
+    value = _num(record, key)
+    if value is None:
+        raise DobPackError(f"{owner} 缺少必需字段「{key}」")
+    return float(value)
 
 
 def _scalar(record: RawRecord, key: str) -> int | str | None:
@@ -406,25 +424,40 @@ def _attr_values(record: RawRecord, skip: frozenset[str]) -> dict[str, AttrValue
 
 
 def _convert_chars(chars: list[RawRecord]) -> ConvertedChars:
-    """角色列表 → {byCharId, byName}，基础值折算 80 级、加成聚合为面板条目"""
+    """角色列表 → {byCharId, byName}，基础值折算 80 级、加成聚合为面板条目
+
+    额外产出 ``passives``（按 ``char.加成`` 的写入顺序）：第 i 项对应
+    ``char.技能[i]`` —— 实测 wiki 技能页标签序与数据包技能序一致
+    （贝蕾妮卡 残光/冥焰、法露茜 潜入夜色/坠入黑渊、苏乙 逐日/歼星模式 均已核对）。
+    """
     by_char: dict[str, CharEntry] = {}
     by_name: dict[str, str] = {}
     for char in chars:
         char_id = _id_str(char, "id")
+        if char_id is None:
+            # 无 id 的记录查询永远命中不了，直接跳过（不写出 "None" 键）
+            continue
+        pack_skills = _records(char, "技能")
+        skill_names = [(_str(skill, "名称") or "") for skill in pack_skills]
         zones: dict[str, dict[str, float]] = {"main": {}, "rate": {}, "elem_atk": {}, "extra": {}}
-        for key, value in _nums(char, "加成").items():
+        passives: list[PassiveEntry] = []
+        for index, (key, value) in enumerate(_nums(char, "加成").items()):
+            owner = skill_names[index] if index < len(skill_names) else None
             zone = _attr_zone(key)
             if zone is None:
                 # 隐藏属性（增伤/减伤/技能伤害等）：键名原样透传
                 zones["extra"][key] = zones["extra"].get(key, 0.0) + value * 100
+                passives.append(PassiveEntry(skill=owner, index=index, zone="extra", key=key, value=value * 100))
                 continue
             zone_name, display = zone
             if zone_name == "elem_atk":
                 # 角色加成里的属性攻击键形如「水属性攻击」
                 elem = key.replace("属性攻击", "")
                 zones["elem_atk"][elem] = zones["elem_atk"].get(elem, 0.0) + value * 100
+                passives.append(PassiveEntry(skill=owner, index=index, zone="elem_atk", key=elem, value=value * 100))
                 continue
             zones[zone_name][display] = zones[zone_name].get(display, 0.0) + value * 100
+            passives.append(PassiveEntry(skill=owner, index=index, zone=zone_name, key=display, value=value * 100))
 
         con_weapons: list[WeaponRecord] = [
             WeaponRecord(
@@ -456,21 +489,21 @@ def _convert_chars(chars: list[RawRecord]) -> ConvertedChars:
             # 武器精通（精通判定用；同律武器绑定角色，必然命中）
             精通=_list_str(char, "精通"),
             额外精通=_list_str(char, "额外精通"),
-            # 1 级白值（查询侧按角色实际等级缩放）
+            # 1 级白值（查询侧按角色实际等级缩放）；五项均为计算必需，缺一即失败
             baseLv1={
-                "攻击": _num_or(char, "基础攻击", 0),
-                "生命": _num_or(char, "基础生命", 0),
-                "护盾": _num_or(char, "基础护盾", 0),
-                "防御": _num_or(char, "基础防御", 0),
-                "神智": _num_or(char, "基础神智", 0),
+                "攻击": _required_num(char, "基础攻击", f"角色 {char_id}"),
+                "生命": _required_num(char, "基础生命", f"角色 {char_id}"),
+                "护盾": _required_num(char, "基础护盾", f"角色 {char_id}"),
+                "防御": _required_num(char, "基础防御", f"角色 {char_id}"),
+                "神智": _required_num(char, "基础神智", f"角色 {char_id}"),
             },
             # 80 级值（等级未知时的兜底，与 wiki 阶段表满级行一致）
             base={
-                "攻击": _round2(_num_or(char, "基础攻击", 0) * MAX_LEVEL_MULTIPLIER),
-                "生命": round(_num_or(char, "基础生命", 0) * MAX_LEVEL_MULTIPLIER),
-                "护盾": round(_num_or(char, "基础护盾", 0) * MAX_LEVEL_MULTIPLIER),
-                "防御": _num_or(char, "基础防御", 0),
-                "神智": _num_or(char, "基础神智", 0),
+                "攻击": _round2(_required_num(char, "基础攻击", f"角色 {char_id}") * MAX_LEVEL_MULTIPLIER),
+                "生命": round(_required_num(char, "基础生命", f"角色 {char_id}") * MAX_LEVEL_MULTIPLIER),
+                "护盾": round(_required_num(char, "基础护盾", f"角色 {char_id}") * MAX_LEVEL_MULTIPLIER),
+                "防御": _required_num(char, "基础防御", f"角色 {char_id}"),
+                "神智": _required_num(char, "基础神智", f"角色 {char_id}"),
             },
             bonus=BonusZones(
                 main=zones["main"],
@@ -478,6 +511,7 @@ def _convert_chars(chars: list[RawRecord]) -> ConvertedChars:
                 elem_atk=zones["elem_atk"],
                 extra=zones["extra"],
             ),
+            passives=passives,
             conWeapons=con_weapons,
             # 技能（紧凑）：字段保留 名称/影响/值(逐档)/值2/格式/伤害类型，
             # 供本地伤害计算按等级取值并按面板属性乘区缩放（替代官方 H5 接口）
@@ -499,7 +533,7 @@ def _convert_chars(chars: list[RawRecord]) -> ConvertedChars:
                         if field.get("名称") is not None and _numeric_field(field.get("值"))
                     ],
                 )
-                for skill in _records(char, "技能")
+                for skill in pack_skills
                 if skill.get("名称")
             ],
         )
@@ -544,9 +578,12 @@ def _convert_mods(mods: list[RawRecord]) -> ConvertedMods:
     """魔之楔列表 → {byId}，数值字段保留满级小数（数组型保留逐档取值），等级缩放放查询侧"""
     by_id: dict[str, ModRecord] = {}
     for mod in mods:
+        mod_id = _id_str(mod, "id")
+        if mod_id is None:
+            continue
         quality_cn = _str(mod, "品质") or "白"
         quality = QUALITY_TO_INT.get(quality_cn, 1)
-        by_id[_id_str(mod, "id")] = ModRecord(
+        by_id[mod_id] = ModRecord(
             id=_int(mod, "id"),
             name=_str(mod, "名称"),
             series=_str(mod, "系列"),
@@ -569,7 +606,10 @@ def _convert_weapons(weapons: list[RawRecord]) -> ConvertedWeapons:
     """武器列表 → {byId}，保留 1 级白值口径"""
     by_id: dict[str, WeaponRecord] = {}
     for weapon in weapons:
-        by_id[_id_str(weapon, "id")] = WeaponRecord(
+        weapon_id = _id_str(weapon, "id")
+        if weapon_id is None:
+            continue
+        by_id[weapon_id] = WeaponRecord(
             id=_int(weapon, "id"),
             name=_str(weapon, "名称"),
             类型=_list_str(weapon, "类型"),
@@ -588,27 +628,62 @@ def _convert_weapons(weapons: list[RawRecord]) -> ConvertedWeapons:
     return ConvertedWeapons(byId=by_id)
 
 
+def _module_records(decoded: RawValue, module: str) -> list[RawRecord]:
+    """模块解码结果取第一个非空记录数组（数据本体）；取不到即判失败
+
+    旧实现取不到时返回空列表，空结构照样写盘并报「更新成功」，下次更新又因版本
+    相同被跳过 —— 数据就一直是空的。这里改为直接失败。
+    """
+    candidates: list[RawValue] = []
+    if isinstance(decoded, list):
+        candidates = list(decoded)
+    elif isinstance(decoded, dict):
+        candidates = list(decoded.values())
+    for value in candidates:
+        if isinstance(value, list):
+            records = [item for item in value if isinstance(item, dict)]
+            if records:
+                return records
+    raise DobPackError(f"数据包模块 {module} 结构异常：未取到记录数组")
+
+
+def validate(data: DobData) -> None:
+    """转换产物的必需字段检查 —— **通过后才允许替换缓存**
+
+    三个模块任一为空、缺版本号、角色缺基础值，都判失败：旧数据继续可用，
+    不会被空 / 残缺结构覆盖。
+    """
+    meta = data.get("_meta", {})
+    chars = data.get("byCharId", {})
+    mods = data.get("mods", {}).get("byId", {})
+    weapons = data.get("weapons", {}).get("byId", {})
+    if not chars or not mods or not weapons:
+        raise DobPackError(f"数据包内容不完整：角色 {len(chars)} / 魔之楔 {len(mods)} / 武器 {len(weapons)}")
+    if not meta.get("packVersion"):
+        raise DobPackError("数据包缺少版本号（manifest.version）")
+    bad = [cid for cid, entry in chars.items() if len(entry.get("baseLv1", {})) < len(_MAIN_ATTR_KEYS)]
+    if bad:
+        raise DobPackError(f"角色基础值不完整：{bad[:5]}（共 {len(bad)} 个）")
+
+
 def convert_pack(zip_bytes: bytes) -> DobData:
-    """数据包 zip → 插件面板用的紧凑 JSON 结构（内存内完成）"""
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        manifest: RawRecord = json.loads(zf.read("manifest.json").decode("utf-8"))
-        char_data: RawValue = msgpack.unpackb(zf.read("modules/char.data.msgpack"), raw=False)
-        mod_data: RawValue = msgpack.unpackb(zf.read("modules/mod.data.msgpack"), raw=False)
-        weapon_data: RawValue = msgpack.unpackb(zf.read("modules/weapon.data.msgpack"), raw=False)
+    """数据包 zip → 插件面板用的紧凑 JSON 结构（内存内完成）
 
-    def exports(decoded: RawValue) -> list[RawRecord]:
-        """模块解码结果是 {导出名: 数据}，取第一个数组导出（即数据本体）"""
-        if isinstance(decoded, list):
-            return [item for item in decoded if isinstance(item, dict)]
-        if isinstance(decoded, dict):
-            for value in decoded.values():
-                if isinstance(value, list):
-                    return [item for item in value if isinstance(item, dict)]
-        return []
+    zip / msgpack / manifest 都是外部输入，解包失败统一收敛成 ``DobPackError``
+    （含 ``zipfile.BadZipFile`` —— 下载到错误页时正是它）。
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            manifest: RawRecord = json.loads(zf.read("manifest.json").decode("utf-8"))
+            char_data: RawValue = msgpack.unpackb(zf.read("modules/char.data.msgpack"), raw=False)
+            mod_data: RawValue = msgpack.unpackb(zf.read("modules/mod.data.msgpack"), raw=False)
+            weapon_data: RawValue = msgpack.unpackb(zf.read("modules/weapon.data.msgpack"), raw=False)
+    except (zipfile.BadZipFile, KeyError, ValueError, UnicodeDecodeError, msgpack.UnpackException) as error:
+        raise DobPackError(f"数据包解包失败: {error!r}") from error
 
-    chars = _convert_chars(exports(char_data))
-    mods = _convert_mods(exports(mod_data))
-    weapons = _convert_weapons(exports(weapon_data))
+    chars = _convert_chars(_module_records(char_data, "char"))
+    mods = _convert_mods(_module_records(mod_data, "mod"))
+    weapons = _convert_weapons(_module_records(weapon_data, "weapon"))
     mod_count = len(mods["byId"])
     char_count = len(chars["byCharId"])
     weapon_count = len(weapons["byId"])
@@ -675,12 +750,28 @@ def _migrate_legacy() -> None:
         logger.warning(f"[DNA DOB] 旧数据文件迁移失败（不影响使用）: {error!r}")
 
 
+def _is_usable(data: DobData) -> bool:
+    """转换产物是否可用：有版本号且三个模块都非空"""
+    meta = data.get("_meta")
+    if not meta or not meta.get("packVersion"):
+        return False
+    mods = data.get("mods")
+    weapons = data.get("weapons")
+    return bool(data.get("byCharId") and mods and mods.get("byId") and weapons and weapons.get("byId"))
+
+
 def read_local_meta() -> DobMeta | None:
-    """读本地已转换数据的 _meta；文件缺失/损坏返回 None"""
+    """读本地已转换数据的 _meta；文件缺失 / 损坏 / 结构不可用均返回 None
+
+    结构不可用返回 None 会让 ``sync`` 重新下载 —— 否则空壳缓存会因版本号相同
+    被一直跳过。
+    """
     _migrate_legacy()
     try:
         raw: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    if not _is_usable(raw):
         return None
     return raw.get("_meta")
 
@@ -694,13 +785,17 @@ def _write_atomic(payload: str) -> None:
     """原子写入：临时文件按进程 + 时间戳命名，避免并发更新争用同一 .tmp"""
     DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = DATA_PATH.with_name(f"{DATA_PATH.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
-    tmp_path.write_text(payload, encoding="utf-8")
-    tmp_path.replace(DATA_PATH)
+    try:
+        tmp_path.write_text(payload, encoding="utf-8")
+        tmp_path.replace(DATA_PATH)
+    except OSError as error:
+        raise DobPackError(f"数据文件写入失败: {error!r}") from error
 
 
 def sync_from_file(zip_path: str | Path) -> str:
     """离线转换入口：把本地数据包 zip 转成 dob_data.json（不联网）"""
     data = convert_from_file(zip_path)
+    validate(data)
     _write_atomic(json.dumps(data, ensure_ascii=False))
     meta = data.get("_meta", {})
     return (
@@ -712,33 +807,39 @@ def sync_from_file(zip_path: str | Path) -> str:
 def sync(force: bool = False) -> tuple[bool, str]:
     """检查并同步最新数据包（同步阻塞，调用方应放线程里）
 
-    网络 / 文件 / 包格式这几类底层异常在此边界处收敛成 ``DobPackError``，
-    调用方（命令、定时任务、启动钩子）只需 catch 这一种。
+    网络 / 文件 / 包格式 / 数据校验这几类**外部**错误在各自边界处收敛成
+    ``DobPackError``（调用方只需 catch 这一种）；内部计算错误原样抛出，便于定位。
 
     Returns:
         (是否发生变化, 提示消息)
     """
-    try:
-        return _sync_once(force)
-    except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
-        raise DobPackError(str(error)) from error
+    return _sync_once(force)
 
 
 def _sync_once(force: bool) -> tuple[bool, str]:
-    """sync 的实际流程（异常由 sync 收敛）"""
-    versions = _fetch_json("versions.json")
+    """sync 的实际流程（外部错误在各边界收敛成 DobPackError）"""
+    try:
+        versions = _fetch_json("versions.json")
+    except (httpx.HTTPError, ValueError) as error:
+        raise DobPackError(f"数据包版本列表拉取失败: {error!r}") from error
     if not versions:
         return False, "数据包版本列表为空"
     latest = versions[0]
     version = _str(latest, "version")
     package_file = _str(latest, "packageFile") or f"{version}.zip"
 
+    # 本地结构不可用时 read_local_meta 返回 None → 版本号相同也会重下
     local_meta = read_local_meta()
     if not force and local_meta and local_meta.get("packVersion") == version:
         return False, f"DOB 数据包已是最新（v{version}）"
 
-    zip_bytes = _download_zip(package_file)
+    try:
+        zip_bytes = _download_zip(package_file)
+    except httpx.HTTPError as error:
+        raise DobPackError(f"数据包下载失败: {error!r}") from error
     data = convert_pack(zip_bytes)
+    # 校验通过才替换缓存 —— 空 / 残缺结构绝不写盘，旧数据继续可用
+    validate(data)
     _write_atomic(json.dumps(data, ensure_ascii=False))
     meta = data.get("_meta", {})
     logger.info(f"[DNA DOB] 数据包已更新: v{version}")
@@ -754,15 +855,16 @@ _update_lock = asyncio.Lock()
 
 
 async def sync_async(force: bool = False) -> tuple[bool, str]:
-    """同步数据包（异步入口）：检查 → 下载 → 校验替换 → 重载查询层，全程持锁串行"""
+    """同步数据包（异步入口）：检查 → 下载 → 校验替换 → 重载查询层，全程持锁串行
+
+    无论是否换版都重载查询层 —— loader 在 import 时读盘，那时 dob_data.json
+    可能还不存在（首次启动）；调用方因此不需要再自己 reload。
+    """
     async with _update_lock:
         changed, message = await asyncio.to_thread(sync, force)
-        if changed:
-            # 更新成功后必须重载查询层：loader 在 import 时读盘，
-            # 那时 dob_data.json 可能还不存在（首次启动）或仍是旧版本
-            from . import dob_loader
+        from . import dob_loader
 
-            await asyncio.to_thread(dob_loader.reload)
+        await asyncio.to_thread(dob_loader.reload)
     return changed, message
 
 
@@ -791,14 +893,13 @@ def startup_auto_sync() -> None:
 
 
 def is_data_ready() -> bool:
-    """本地是否已有可用的转换数据"""
+    """本地是否已有可用的转换数据（版本号 + 三个模块都非空）"""
     _migrate_legacy()
     try:
         data: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return False
-    meta = data.get("_meta")
-    return bool(meta and meta.get("packVersion"))
+    return _is_usable(data)
 
 
 __all__ = [
@@ -813,6 +914,7 @@ __all__ = [
     "convert_from_file",
     "convert_pack",
     "read_local_meta",
+    "validate",
     "startup_auto_sync",
     "sync",
     "sync_async",

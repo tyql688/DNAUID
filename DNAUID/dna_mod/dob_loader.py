@@ -624,6 +624,21 @@ def is_skill_weapon(weapon: WeaponRecord | None) -> bool:
     return bool(types) and types[0] == "同律"
 
 
+def is_weapon_mastered(char_id: int | str | None, weapon: WeaponRecord | None) -> bool:
+    """角色是否精通该武器类别（dna-builder ``CharBuild.isWeaponCategoryMastered``）
+
+    同律武器绑定角色，类别取 ``类型[2]``；普通武器取 ``类型[1]``（见 ``weapon_category``）。
+    「全部能力类型 / 全部类型」视为精通一切。
+    """
+    if weapon is None:
+        return False
+    category = weapon_category(weapon)
+    if not category:
+        return False
+    mastered, _ = get_char_mastery(char_id)
+    return category in mastered or "全部能力类型" in mastered or "全部类型" in mastered
+
+
 def weapon_mastery_ratio(
     char_id: int | str | None,
     weapon: WeaponRecord | None,
@@ -756,6 +771,7 @@ __all__ = [
     "MASTERY_RATIO_HIT",
     "get_char_mastery",
     "is_skill_weapon",
+    "is_weapon_mastered",
     "weapon_category",
     "weapon_mastery_ratio",
     "weapon_types",

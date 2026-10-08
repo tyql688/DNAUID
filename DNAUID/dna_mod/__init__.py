@@ -16,13 +16,32 @@ sv_dob = SV("dna数据包")
 async def update_dob_pack(bot: Bot, ev: Event) -> None:
     await bot.send("开始拉取 DOB 数据包（dna-builder 数据源），请稍候…")
     try:
-        changed, message = await dob_pack.sync_async()
+        # sync_async 内部已负责重载查询层，这里不再重复 reload
+        _, message = await dob_pack.sync_async()
     except dob_pack.DobPackError as error:
         await bot.send(f"数据包更新失败：{error!r}")
         return
-    if changed:
-        await asyncio.to_thread(dob_loader.reload)
     await bot.send(message)
+
+
+async def ensure_data_ready() -> str | None:
+    """确保 DOB 数据可用（面板等入口在计算前调用）
+
+    ``on_core_start`` 是后台钩子，里面的等待挡不住命令 —— 面板入口必须自己复用
+    同一初始化入口（``dob_pack.sync_async`` 内部持锁串行，重复调用不会并发下载）。
+    返回 None 表示可用，否则返回给用户看的失败提示。
+    """
+    if dob_loader.is_loaded():
+        return None
+    if not DNAConfig.get_config("DobAutoUpdate").data:
+        return "DOB 数据包未就绪，请先发送「dna更新数据包」"
+    try:
+        await dob_pack.sync_async()
+    except dob_pack.DobPackError as error:
+        return f"DOB 数据包初始化失败：{error!r}"
+    if not dob_loader.is_loaded():
+        return "DOB 数据包初始化失败：dob_data.json 缺失或内容不完整"
+    return None
 
 
 @sv_dob.on_fullmatch(("数据包状态", "DOB数据状态", "数据源状态"))

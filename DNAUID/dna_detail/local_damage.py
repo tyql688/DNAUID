@@ -97,8 +97,8 @@ def _fmt_field(field: ResolvedSkillField) -> str:
 def _resolve_levels(role_detail: RoleDetail) -> dict[str, int]:
     """官方接口技能表 → {技能名: 结算等级}
 
-    skills[].level 已含溯源加成（damage_service 发送官方请求时正是减去
-    溯源加成得到基础等级），直接作为结算等级，封顶 12 级。
+    skills[].level 已含溯源加成（官方 H5 请求侧会先减去溯源加成得到基础等级），
+    这里直接作为结算等级，封顶 12 级。
     """
     levels: dict[str, int] = {}
     for skill in role_detail.skills:
@@ -140,6 +140,7 @@ def draw_local_damage_section(
     con_weapon_detail: WeaponDetail | None = None,
     close_weapon_detail: WeaponDetail | None = None,
     ranged_weapon_detail: WeaponDetail | None = None,
+    ctx: AttrContext | None = None,
 ) -> Image.Image:
     """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 三类武器伤害 + 技能字段面板
 
@@ -148,6 +149,7 @@ def draw_local_damage_section(
     技能行标签用角色元素色，数值统一白色；行底纹按奇偶交替；长标签自动缩字号。
     武器伤害 = 该武器一次攻击的期望伤害（``local_weapon_damage.compute_weapon_damage``，
     打 dna-builder 默认目标「生命木桩130」，不含防御乘区）；数据不足时显示「无法计算」。
+    ``ctx`` 传已算好的 ``AttrContext`` 时直接复用（与属性表共用同一份，不再重复迭代）。
     """
     from PIL import Image, ImageDraw
 
@@ -179,9 +181,10 @@ def draw_local_damage_section(
     from ..utils.fonts.dna_fonts import dna_font_22, dna_font_30
     from .local_weapon_attribute import resolve_inherit_source
 
-    weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
-    weapon_categories = collect_weapon_categories(role_detail, weapon_details)
-    ctx = compute_attr_context(role_detail, con_weapon_detail, weapon_categories, weapon_details)
+    if ctx is None:
+        weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
+        weapon_categories = collect_weapon_categories(role_detail, weapon_details)
+        ctx = compute_attr_context(role_detail, weapon_categories, weapon_details)
     panels = build_local_skill_panels(role_detail, ctx)
 
     # 角色属性：基础（官方 attribute 裸值）→ 最终（本地计算）

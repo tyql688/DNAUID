@@ -28,12 +28,14 @@
 --------
 1. **角色魔之楔**（``role_detail.modes``），数值取 ``dob_loader.get_mod_attrs``
    （满级小数按等级线性缩放后 ×100 转百分比）。
-2. **角色加成**（数据包 ``char.加成``）—— 即 wiki 技能解锁被动（伤害/增益节点）
-   的聚合总值（验证：芙罗拉 加成.昂扬 15% = wiki 两条被动 6% + 9%），默认全部计入。
+2. **角色加成**（数据包 ``char.加成``）—— 技能解锁被动的两档合计值
+   （验证：芙罗拉 昂扬 15% = 6% + 9%、贝蕾妮卡 攻击 50% = 20% + 30%）。
+   **按官方 ``get_skill_extend_level`` 还原档位**：第 1 档技能 4 级解锁、
+   第 2 档 8 级解锁，两档比例固定 40%:60%。
 3. **同律武器精炼被动** —— 数据包 ``char.同律武器`` 提供同律武器白值；
    精炼被动数值仍在补，暂不计入。
    ⚠️ 同律武器的**专属 mod** 只进「同律武器自己的面板」，**不进角色面板**，
-   所以这里**不累加** ``con_weapon_detail.modes``。
+   所以这里**不累加**同律武器的专属 mod。
 
 数据文件
 --------
@@ -79,14 +81,6 @@ _EXTRA_DISPLAY: dict[str, str] = {
     "昂扬": "昂扬",
     "背水": "背水",
 }
-
-
-def reload_role_panel() -> None:
-    """清空 DOB 数据（兼容旧接口名），下次查询重新读盘
-
-    供数据包更新（dna_mod/dob_pack.py）在重建 dob_data.json 后调用。
-    """
-    dob_loader.reload()
 
 
 def get_role_panel_entry(role_detail: RoleDetail) -> CharEntry | None:
@@ -163,13 +157,6 @@ def collect_weapon_categories(
     return counts
 
 
-def _is_weapon_mastered(role_detail: RoleDetail, record: WeaponRecord | None) -> bool:
-    """角色是否精通该武器类别（dna-builder CharBuild.isWeaponCategoryMastered）"""
-    mastered, _extra = dob_loader.get_char_mastery(role_detail.charId)
-    category = dob_loader.weapon_category(record)
-    return bool(category) and (category in mastered or "全部能力类型" in mastered or "全部类型" in mastered)
-
-
 def collect_weapon_forge_bonus(
     role_detail: RoleDetail,
     weapon_details: list[WeaponDetail | None],
@@ -188,7 +175,7 @@ def collect_weapon_forge_bonus(
         record = _weapon_record_of(role_detail, weapon_detail)
         if record is None or dob_loader.is_skill_weapon(record):
             continue
-        if record.get("hasForge") and not _is_weapon_mastered(role_detail, record):
+        if record.get("hasForge") and not dob_loader.is_weapon_mastered(role_detail.charId, record):
             continue
         bonus = dob_loader.weapon_forge_bonus(record, weapon_detail.skillLevel)
         if not bonus:
@@ -271,23 +258,77 @@ def _collect_modes(
         logger.warning(f"[DNA 面板] 数据包未收录的魔之楔 id: {bonus.missing}（其词条未计入面板）")
 
 
+# 技能解锁被动的两档比例与解锁等级
+# 官方 get_skill_extend_level：技能 >=4 解锁第 1 档、>=8 解锁第 2 档。
+# 数据包 char.加成 只给两档合计；实测 33 个角色每项都是 40%:60%
+# （20/30、12/18、6/9、5/7.5、8/12、2/3、15/22.5），故按此比例拆分。
+_PASSIVE_TIER_RATIO = (0.4, 0.6)
+_PASSIVE_UNLOCK_LEVELS = (4, 8)
+
+
+def _skill_levels(role_detail: RoleDetail) -> dict[str, int]:
+    """官方 ``charDetail.skills`` → {技能名: 等级}"""
+    return {skill.skillName: skill.level for skill in role_detail.skills}
+
+
+def _passive_tier_ratio(level: int | None) -> float:
+    """按技能等级取该被动的计入比例
+
+    ``>=8`` 全计、``>=4`` 只计第 1 档、其余不计。技能不在官方返回里
+    （``level is None``）时按「默认已学会」全计 —— 端口没返回不代表没学。
+    """
+    if level is None:
+        return 1.0
+    if level >= _PASSIVE_UNLOCK_LEVELS[1]:
+        return 1.0
+    if level >= _PASSIVE_UNLOCK_LEVELS[0]:
+        return _PASSIVE_TIER_RATIO[0]
+    return 0.0
+
+
 def _collect_char_bonus(
     role_detail: RoleDetail,
     bonus: AttributeBonus,
 ) -> None:
-    """累加角色自身加成（DOB 数据包 char.加成）
+    """累加角色自身的技能解锁被动（数据包 ``char.加成``）
 
-    该字段是游戏内技能解锁被动（伤害/增益节点）的聚合总值，
-    与 wiki 逐条被动合计一致，因此默认全部计入、无需条件判定。
+    数据包只给「两档合计」、没有解锁条件，这里按官方 ``get_skill_extend_level``
+    还原档位：第 1 档技能 4 级解锁、第 2 档 8 级解锁（两档比例 40%:60%）。
+    每条被动挂在哪个技能下由转换阶段写入 ``passives[].skill`` / ``index``。
+    老数据没有 ``passives`` 时回退为「全部计入」。
     """
     entry = get_role_panel_entry(role_detail)
     if not entry:
         return
-    char_bonus = dob_loader.get_char_bonus(entry)
-    bonus.add(char_bonus)
-    reduce = char_bonus["extra"].get("减伤")
-    if reduce:
-        bonus.reduce_sources.append(float(reduce) / 100)
+    passives = entry.get("passives")
+    if not passives:
+        char_bonus = dob_loader.get_char_bonus(entry)
+        bonus.add(char_bonus)
+        reduce = char_bonus["extra"].get("减伤")
+        if reduce:
+            bonus.reduce_sources.append(float(reduce) / 100)
+        return
+    levels = _skill_levels(role_detail)
+    buckets = {
+        "main": bonus.main,
+        "rate": bonus.rate,
+        "elem_atk": bonus.elem_atk,
+        "extra": bonus.extra,
+    }
+    for passive in passives:
+        level = levels.get(passive["skill"] or "")
+        if level is None and passive["index"] < len(role_detail.skills):
+            # 名字对不上时按同一顺序回退（官方 skills 顺序与数据包一致）
+            level = role_detail.skills[passive["index"]].level
+        ratio = _passive_tier_ratio(level)
+        if ratio <= 0:
+            continue
+        value = float(passive["value"]) * ratio
+        key = passive["key"]
+        bucket = buckets[passive["zone"]]
+        bucket[key] = bucket.get(key, 0.0) + value
+        if passive["zone"] == "extra" and key == "减伤":
+            bonus.reduce_sources.append(value / 100)
 
 
 def _condition_snapshot(base_main: dict[str, float], bonus: AttributeBonus) -> dict[str, float]:
@@ -310,7 +351,6 @@ def _condition_snapshot(base_main: dict[str, float], bonus: AttributeBonus) -> d
 
 def collect_attribute_bonus(
     role_detail: RoleDetail,
-    con_weapon_detail: WeaponDetail | None = None,
     base_main: dict[str, float] | None = None,
     weapon_categories: dict[str, int] | None = None,
     weapon_details: list[WeaponDetail | None] | None = None,
@@ -321,9 +361,8 @@ def collect_attribute_bonus(
     快照判「属性门槛」类条件 → 有变化就带着新快照重算，最多 3 轮收敛
     （门槛条件均为 >= 型、加成只增不减，必然单调收敛）。
 
-    ⚠️ 不收 ``con_weapon_detail.modes`` —— 同律武器的专属 mod 只进
-    同律武器自己的面板，不进角色面板。
-    ✅ 收**近战/远程武器自身的「加成」**（``weapon_details`` 里的非同类同律武器）
+    ⚠️ 同律武器的专属 mod 只进同律武器自己的面板，**不进角色面板**。
+    ✅ 收**近战/远程武器自身的「加成」**（``collect_weapon_forge_bonus``）
     —— dna-builder ``getTotalBonus(attr, "角色")`` 会把它计入角色属性。
     """
     if base_main is None:
@@ -511,15 +550,17 @@ class AttrContext:
 
 def compute_attr_context(
     role_detail: RoleDetail,
-    con_weapon_detail: WeaponDetail | None = None,
     weapon_categories: dict[str, int] | None = None,
     weapon_details: list[WeaponDetail | None] | None = None,
 ) -> AttrContext:
-    """计算面板与本地伤害共用的属性上下文（最终四维原始值 + 技能乘区）"""
+    """计算面板与本地伤害共用的属性上下文（最终四维原始值 + 技能乘区）
+
+    同一张卡片只调一次，结果交给 ``compute_final_attribute`` 与
+    ``draw_local_damage_section`` 共用，避免重复跑不动点迭代。
+    """
     base_main, source = _base_main_values(role_detail)
     bonus = collect_attribute_bonus(
         role_detail,
-        con_weapon_detail,
         base_main,
         weapon_categories,
         weapon_details,
@@ -566,12 +607,16 @@ def compute_attr_context(
 
 def compute_final_attribute(
     role_detail: RoleDetail,
-    con_weapon_detail: WeaponDetail | None = None,
     weapon_categories: dict[str, int] | None = None,
     weapon_details: list[WeaponDetail | None] | None = None,
+    ctx: AttrContext | None = None,
 ) -> FinalAttribute:
-    """本地计算角色最终属性，返回面板标准行 + 隐藏属性行"""
-    ctx = compute_attr_context(role_detail, con_weapon_detail, weapon_categories, weapon_details)
+    """本地计算角色最终属性，返回面板标准行 + 隐藏属性行
+
+    ``ctx`` 传已算好的 ``AttrContext`` 时直接复用（与伤害区块共用同一份）。
+    """
+    if ctx is None:
+        ctx = compute_attr_context(role_detail, weapon_categories, weapon_details)
     bonus = ctx.bonus
     source = ctx.source
     matched = ctx.matched
@@ -652,12 +697,13 @@ def compute_final_attribute(
 
 
 __all__ = [
+    "AttrContext",
     "AttributeBonus",
     "FinalAttribute",
     "collect_attribute_bonus",
     "collect_weapon_categories",
     "collect_fullness_conversion",
+    "compute_attr_context",
     "compute_final_attribute",
     "get_role_panel_entry",
-    "reload_role_panel",
 ]

@@ -29,8 +29,12 @@ ConditionValue: TypeAlias = "str | int | float"
 Condition: TypeAlias = "list[ConditionValue]"
 
 
-class MainAttrs(TypedDict, total=False):
-    """四维基础值（``baseLv1`` 为 1 级白值，``base`` 为满级值）"""
+class MainAttrs(TypedDict):
+    """四维基础值（``baseLv1`` 为 1 级白值，``base`` 为满级值）
+
+    ``_convert_chars`` 恒定写全 5 项（缺失即视为数据包异常，转换阶段就拦下），
+    故这里声明为必选，消费方不必逐层补默认值。
+    """
 
     攻击: float
     生命: float
@@ -39,8 +43,8 @@ class MainAttrs(TypedDict, total=False):
     神智: float
 
 
-class BonusZones(TypedDict, total=False):
-    """数据包里 ``char.加成`` 的原始分区（值均为百分比）"""
+class BonusZones(TypedDict):
+    """数据包里 ``char.加成`` 的原始分区（值均为百分比）—— 四个分区恒定存在"""
 
     main: dict[str, float]
     rate: dict[str, float]
@@ -143,6 +147,20 @@ class WeaponRecord(TypedDict, total=False):
     skill: list[int]
 
 
+class PassiveEntry(TypedDict):
+    """技能解锁被动的一条（``char.加成`` 的一项，按数据包写入顺序）
+
+    数据包只给两档合计值；``skill`` / ``index`` 指明它挂在哪个技能下，
+    查询侧据此按技能 4 级 / 8 级还原档位（见 ``local_attribute._passive_tier_ratio``）。
+    """
+
+    skill: str | None
+    index: int
+    zone: str
+    key: str
+    value: float
+
+
 class CharEntry(TypedDict, total=False):
     """角色面板条目"""
 
@@ -154,6 +172,7 @@ class CharEntry(TypedDict, total=False):
     baseLv1: MainAttrs
     base: MainAttrs
     bonus: BonusZones
+    passives: list[PassiveEntry]
     conWeapons: list[WeaponRecord]
     skills: list[SkillEntry]
 
@@ -215,6 +234,7 @@ __all__ = [
     "ModEffect",
     "ModRecord",
     "ParsedAttrs",
+    "PassiveEntry",
     "RawRecord",
     "RawValue",
     "ResolvedSkillField",

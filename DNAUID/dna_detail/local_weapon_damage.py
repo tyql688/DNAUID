@@ -12,9 +12,12 @@
 - 血量百分比 100%（昂扬满额生效、背水不生效），见 ``DEFAULT_HP_PERCENT``。
 - **不含防御乘区** —— 与 dna-builder 界面的 ``expectedDamage`` 一致
   （它把防御放在 ``calculateRandomDamage`` 里）。木桩130 / 角色80 的防御乘区为
-  ``1 − 130/(300+130) ≈ 0.6977``，需要时乘上即可（``defense_multiplier()``）。
-- 数据包目前**没有**「元素增伤 / 物理增伤 / 武器伤害 / 属性穿透 / 无视防御 /
-  失衡易伤 / 转xx」这些键，公式保留结构但取 0/1，将来数据包补齐即自动生效。
+  ``1 − 130/(300+130) ≈ 0.6977``。
+- **属性穿透**取自角色侧汇总（``AttrContext.bonus.extra``，含角色加成、角色槽
+  MOD 与近战/远程武器自身的「加成」），按 ``max(0, 1 + 属性穿透)`` 整体相乘
+  （dna-builder ``CharBuild.ts:2349`` 的 ``resistancePenetration``）。
+- 数据包目前**没有**「元素增伤 / 物理增伤 / 武器伤害 / 无视防御 / 失衡易伤 /
+  转xx」这些键，公式保留结构但取 0/1，将来数据包补齐即自动生效。
 
 公式（无转换子集，dna-builder ``CharBuild.ts:2298-2465``）
 ----------------------------------------------------------
@@ -22,7 +25,7 @@
 元素分量占比 = 角色攻击/总攻击 × (1 − 敌人抗性)；灾厄伤害类型整份转物理分量。
 
 ``期望伤害 = Σ分量 × (1 + 触发倍率 × min(1, 触发率)) × 增伤乘区
-             × 暴击期望 × 昂扬背水乘区 × 独立增伤 × 追加伤害``
+             × 暴击期望 × 昂扬背水乘区 × 独立增伤 × 追加伤害 × 属性穿透``
 
 ``武器伤害 = 期望伤害 × 总攻击``
 
@@ -36,7 +39,7 @@ from typing import TYPE_CHECKING
 
 from ..dna_mod import dob_loader
 from ..utils.api.model import Mode, RoleDetail, WeaponDetail
-from ..dna_mod.dob_types import WeaponRecord
+from .local_weapon_attribute import resolve_weapon_panel, resolve_weapon_record
 
 if TYPE_CHECKING:
     from .local_attribute import AttrContext
@@ -55,9 +58,6 @@ HP_TYPE_DAMAGE: dict[str, str] = {"生命": "贯穿", "护盾": "切割", "战�
 
 # 昂扬/背水乘区用的血量百分比：1.0 = 满血（昂扬满额、背水不生效）
 DEFAULT_HP_PERCENT = 1.0
-
-# dna-builder calculateDefenseMultiplier 的常数
-DEFENSE_CONSTANT = 300.0
 
 # 该武器槽 mod 的伤害相关加成键（小数；数据包有的键已覆盖，其余为 0）
 _DAMAGE_BONUS_KEYS = (
@@ -91,37 +91,6 @@ def collect_weapon_damage_bonus(modes: list[Mode]) -> dict[str, float]:
     return out
 
 
-def resolve_weapon_record(
-    weapon_detail: WeaponDetail,
-    role_detail: RoleDetail,
-) -> tuple[WeaponRecord | None, bool]:
-    """按武器 id 取数据包记录，返回 (记录, 是否同律武器)"""
-    weapon = dob_loader.get_weapon(weapon_detail.id)
-    if weapon is not None:
-        return weapon, False
-    if role_detail.conWeaponId is not None:
-        con = dob_loader.get_con_weapon(role_detail.charId, role_detail.conWeaponId)
-        if con is not None:
-            return con, True
-    return None, False
-
-
-def defense_multiplier(
-    char_level: int | None,
-    ignore_defense: float = 0.0,
-) -> float:
-    """防御乘区（dna-builder ``calculateDefenseMultiplier``）
-
-    ``减伤率 = def / (300 + def − 等级差×10)``，等级差 = clamp(敌等级 − 角色等级, 0, 20)
-    （敌等级先 clamp 到 80）。木桩 130 / 角色 80 → ``1 − 130/430 ≈ 0.6977``。
-    """
-    enemy_level = ENEMY_LEVEL
-    level_diff = max(0, min(20, min(80, enemy_level) - (char_level or 80)))
-    effective_def = ENEMY_DEF * (1 - ignore_defense)
-    damage_reduce = effective_def / (DEFENSE_CONSTANT + effective_def - level_diff * 10)
-    return max(0.0, min(1.0, 1 - damage_reduce))
-
-
 def _trigger_multiplier(damage_type: str | None, trigger_bonus: float) -> float:
     """触发倍率加成（dna-builder ``calculateWeaponDamage.getTriggerMultiplier``）
 
@@ -147,8 +116,6 @@ def compute_weapon_damage(
     ``ctx`` 为 ``local_attribute.AttrContext``（用其 ``final_main`` 取角色攻击、
     ``bonus.extra`` 取增伤/独立增伤、``bonus.rate`` 取昂扬/背水）。
     """
-    from .local_weapon_attribute import resolve_weapon_panel
-
     char_atk = ctx.final_main.get("攻击")
     if not isinstance(char_atk, (int, float)) or isinstance(char_atk, bool) or char_atk <= 0:
         return None
@@ -189,7 +156,10 @@ def compute_weapon_damage(
     crit_damage = float(panel.crd)
     trigger_rate = min(1.0, max(0.0, float(panel.trigger)))
 
-    weapon_damage_bonus = collect_weapon_damage_bonus(weapon_detail.modes)
+    # 继承型同律武器复用被继承武器的面板，其伤害词条也从被继承武器读取
+    # （dna-builder calculateWeaponDamage 里 weapon 已被换成被继承的那把）
+    damage_mods = (inherit_from or weapon_detail).modes
+    weapon_damage_bonus = collect_weapon_damage_bonus(damage_mods)
     trigger_add = _trigger_multiplier(damage_type, weapon_damage_bonus["触发倍率"])
 
     parts: list[tuple[float, float, bool]] = []
@@ -231,7 +201,7 @@ def compute_weapon_damage(
     desperate_multiplier = 1.0 + 4.0 * desperate * (1 - desperate_hp) * (1.5 - desperate_hp)
     hp_more = boost_multiplier * desperate_multiplier
 
-    # ── 独立增伤（乘法聚合）× 追加伤害 ──
+    # ── 独立增伤（乘法聚合）× 追加伤害 × 属性穿透 ──
     char_independent = float(extra.get("独立增伤", 0.0)) / 100
     independent = (1.0 + char_independent) * (1.0 + weapon_damage_bonus["独立增伤"])
     # 追加伤害是「角色作用域」属性：dna-builder 用 getTotalBonus("追加伤害")（默认前缀「角色」），
@@ -239,7 +209,9 @@ def compute_weapon_damage(
     # 即「角色自带加成 + 近战/远程武器自身加成 + 角色槽 MOD」，**不含武器槽 MOD**。
     char_additional = float(extra.get("追加伤害", 0.0)) / 100
     additional_damage = 1.0 + char_additional
-    other_more = independent * additional_damage
+    # 属性穿透对所有结算类型整体相乘（dna-builder CharBuild.ts:2349 resistancePenetration）
+    penetration = max(0.0, 1.0 + float(extra.get("属性穿透", 0.0)) / 100)
+    other_more = independent * additional_damage * penetration
 
     expected = expected_trigger_part * crit_expected * hp_more * other_more
     return expected * total_attack
@@ -250,6 +222,4 @@ __all__ = [
     "ENEMY_NAME",
     "collect_weapon_damage_bonus",
     "compute_weapon_damage",
-    "defense_multiplier",
-    "resolve_weapon_record",
 ]

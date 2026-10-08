@@ -11,6 +11,8 @@
    ``基础值 × (1 + Σ mod加成%)``。
 3. **魔之楔加成**：``dob_loader.get_weapon_mod_attrs``（键已映射为面板显示名：
    攻击 / 暴击率 / 暴击伤害 / 攻击速度 / 触发概率，值为百分比）。
+4. **灾厄熔炼潜能**：武器自身「加成」按精炼缩放后计入，但**仅在角色精通该武器
+   类别时生效**（dna-builder ``CharBuild.isWeaponForgeEffective``）。
 
 已验证（莉兹贝尔 · 萨麦尔 lv80 · 4 mod 金+10，DNAUID 历史记录口径）：
 - 暴击率   20% × (1+100%) =  40%   ✓
@@ -32,19 +34,22 @@ if TYPE_CHECKING:
     from .local_attribute import AttributeBonus
 
 
-def _resolve_weapon_record(
+def resolve_weapon_record(
     weapon_detail: WeaponDetail,
     role_detail: RoleDetail,
 ) -> tuple[WeaponRecord | None, bool]:
-    """按武器 id 取数据包记录，返回 (记录, 是否同律武器)
+    """按**请求 id** 取数据包记录，返回 (记录, 是否同律武器)
 
-    优先查普通武器表，再查角色数据包中的同律武器条目。
+    先查普通武器表；查不到时，只有请求 id 恰好等于角色的同律武器 id 才去查
+    角色数据包的同律武器条目 —— 不允许拿角色的同律武器顶替另一把查不到的武器
+    （否则数据包未收录的普通武器会被算成同律武器的面板与伤害）。
     """
     weapon = dob_loader.get_weapon(weapon_detail.id)
     if weapon is not None:
         return weapon, False
-    if role_detail.conWeaponId is not None:
-        con = dob_loader.get_con_weapon(role_detail.charId, role_detail.conWeaponId)
+    con_id = role_detail.conWeaponId
+    if con_id is not None and str(weapon_detail.id) == str(con_id):
+        con = dob_loader.get_con_weapon(role_detail.charId, con_id)
         if con is not None:
             return con, True
     return None, False
@@ -61,7 +66,7 @@ def resolve_inherit_source(
     dna-builder ``calculateWeaponAttributes`` 对 inherit 武器直接把 weapon 换成
     被继承的那把，面板与伤害全部按被继承武器算（伤害类型也同步过去）。
     """
-    record, _is_skill = _resolve_weapon_record(weapon_detail, role_detail)
+    record, _is_skill = resolve_weapon_record(weapon_detail, role_detail)
     inherit = record.get("inherit") if record else None
     if inherit == "melee":
         return close_weapon_detail
@@ -82,7 +87,7 @@ def resolve_weapon_base_attack(weapon_detail: WeaponDetail, role_detail: RoleDet
 
     数据包未收录（数据不足）返回 None，由调用方显示「无法计算」。
     """
-    weapon, is_skill = _resolve_weapon_record(weapon_detail, role_detail)
+    weapon, is_skill = resolve_weapon_record(weapon_detail, role_detail)
     multiplier = dob_loader.level_multiplier(resolve_weapon_level(weapon_detail, role_detail, is_skill))
     if multiplier is None:
         return None
@@ -96,7 +101,7 @@ def resolve_weapon_base_attack(weapon_detail: WeaponDetail, role_detail: RoleDet
 
 def resolve_weapon_mastery_ratio(weapon_detail: WeaponDetail, role_detail: RoleDetail) -> float:
     """武器攻击的精通倍率（命中 1.2 / 未命中 1.0；同律武器必然命中）"""
-    weapon, _ = _resolve_weapon_record(weapon_detail, role_detail)
+    weapon, _ = resolve_weapon_record(weapon_detail, role_detail)
     return dob_loader.weapon_mastery_ratio(role_detail.charId, weapon)
 
 
@@ -202,6 +207,16 @@ class WeaponPanel:
     trigger: float
 
 
+def _is_forge_effective(role_detail: RoleDetail, record: WeaponRecord | None) -> bool:
+    """灾厄熔炼潜能是否在当前角色精通下生效（dna-builder CharBuild.isWeaponForgeEffective）
+
+    无熔炉的武器恒生效；带熔炉（灾厄武器潜能）的必须角色精通该武器类别。
+    """
+    if record is None or not record.get("hasForge"):
+        return True
+    return dob_loader.is_weapon_mastered(role_detail.charId, record)
+
+
 def resolve_weapon_panel(
     weapon_detail: WeaponDetail,
     role_detail: RoleDetail,
@@ -221,8 +236,14 @@ def resolve_weapon_panel(
     base = weapon_detail.attribute
     mod_bonus = collect_weapon_bonus(weapon_detail.modes)
     scope = collect_char_weapon_scope_bonus(role_detail, bonus)
-    record, _is_skill = _resolve_weapon_record(weapon_detail, role_detail)
-    forge = dob_loader.weapon_forge_bonus(record, weapon_detail.skillLevel)
+    record, _is_skill = resolve_weapon_record(weapon_detail, role_detail)
+    # 灾厄熔炼潜能只在角色精通该武器类别时生效（dna-builder isWeaponForgeEffective）；
+    # 与角色面板的 collect_weapon_forge_bonus 同一判定
+    forge = (
+        dob_loader.weapon_forge_bonus(record, weapon_detail.skillLevel)
+        if _is_forge_effective(role_detail, record)
+        else {}
+    )
 
     cri_bonus = mod_bonus.cri + scope.cri + float(forge.get("暴击", 0.0)) * 100
     crd_bonus = mod_bonus.crd + scope.crd + float(forge.get("暴伤", 0.0)) * 100
@@ -287,9 +308,9 @@ def compute_weapon_attribute(
     """
     panel = resolve_weapon_panel(weapon_detail, role_detail, bonus, inherit_from)
 
-    own_rec, _ = _resolve_weapon_record(weapon_detail, role_detail)
+    own_rec, _ = resolve_weapon_record(weapon_detail, role_detail)
     # 攻击行标签取被继承武器的伤害类型（dna-builder syncSkillWeaponDamageType 同口径）
-    label_rec, _ = _resolve_weapon_record(inherit_from or weapon_detail, role_detail)
+    label_rec, _ = resolve_weapon_record(inherit_from or weapon_detail, role_detail)
 
     rows: list[tuple[str, str]] = []
     # 官方接口对个别武器不返回 elementName（如 无声的嘶吼），回退数据包的武器类别
@@ -329,4 +350,5 @@ __all__ = [
     "resolve_weapon_level",
     "resolve_weapon_mastery_ratio",
     "resolve_weapon_panel",
+    "resolve_weapon_record",
 ]
