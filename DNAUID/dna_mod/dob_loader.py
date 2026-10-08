@@ -26,7 +26,7 @@ from collections.abc import Callable
 
 from gsuid_core.logger import logger
 
-from .dob_pack import DATA_PATH
+from .dob_pack import DATA_PATH, PACK_FORMAT, migrate_legacy
 from .dob_types import (
     DobData,
     CharEntry,
@@ -62,6 +62,8 @@ _data: DobData = {}
 
 def _load() -> None:
     global _data
+    # 旧目录（dna_mod/data/）的文件先迁过来再读，否则新位置明明有缓存也是空的
+    migrate_legacy()
     if not DATA_FILE.exists():
         logger.warning(f"[DNA DOB] 数据包数据缺失: {DATA_FILE}")
         _data = {}
@@ -74,6 +76,11 @@ def _load() -> None:
         _data = {}
         return
     meta = _data.get("_meta", {})
+    if meta.get("format") != PACK_FORMAT:
+        # 旧格式缺新增必需字段：丢弃并让上层重新同步（is_loaded() 会返回 False）
+        logger.warning(f"[DNA DOB] 数据格式过旧（format={meta.get('format')}，需要 {PACK_FORMAT}），请重新同步数据包")
+        _data = {}
+        return
     logger.info(
         f"[DNA DOB] 数据已加载: v{meta.get('packVersion')}"
         f"（角色 {meta.get('chars')} / 魔之楔 {meta.get('mods')} / 武器 {meta.get('weapons')}）"
@@ -88,8 +95,13 @@ _load()
 
 
 def is_loaded() -> bool:
+    """数据是否可用（格式版本匹配 + 三个模块都非空）"""
+    meta = _data.get("_meta")
+    if not meta or meta.get("format") != PACK_FORMAT:
+        return False
     mods = _data.get("mods")
-    return bool(mods and mods.get("byId"))
+    weapons = _data.get("weapons")
+    return bool(_data.get("byCharId") and mods and mods.get("byId") and weapons and weapons.get("byId"))
 
 
 def version() -> str | None:
@@ -121,11 +133,29 @@ def weapon_count() -> int:
 # ── 角色查询 ─────────────────────────────────────────────────
 
 
+# 男主的 charId 与数据包不一致：游戏侧是 120101 / 160101 / 220101，
+# 数据包（与女主共用一份）只有 1201 / 1601 / 2201 —— 见 utils/master_char_const.py
+_CHAR_ID_ALIASES: dict[str, str] = {
+    "120101": "1201",
+    "160101": "1601",
+    "220101": "2201",
+}
+
+
 def get_char(char_id: int | str | None) -> CharEntry | None:
-    """按游戏 charId 取角色面板数据条目"""
+    """按游戏 charId 取角色面板数据条目（男主 id 归一化到数据包的条目）
+
+    属性、技能、精通都经这里取，所以只需在这一处转换。
+    """
     if char_id is None:
         return None
-    return _data.get("byCharId", {}).get(str(char_id))
+    by_char = _data.get("byCharId", {})
+    key = str(char_id)
+    entry = by_char.get(key)
+    if entry is not None:
+        return entry
+    alias = _CHAR_ID_ALIASES.get(key)
+    return by_char.get(alias) if alias else None
 
 
 def get_char_by_name(name: str | None) -> CharEntry | None:

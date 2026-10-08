@@ -44,6 +44,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import field, dataclass
 
 from gsuid_core.logger import logger
@@ -118,13 +119,17 @@ class AttributeBonus:
 
 
 def _weapon_record_of(role_detail: RoleDetail, weapon_detail: WeaponDetail | None) -> WeaponRecord | None:
-    """取武器记录（先查普通武器表，再查角色的同律武器条目）"""
+    """取武器记录（与武器面板/伤害共用同一查找：按**请求 id** 匹配）
+
+    不能拿角色的同律武器顶替查不到的普通武器 —— 否则未收录的普通武器会被算进
+    同律武器的类别计数（如「锋芒」增伤按两把单手剑算成 12%）。
+    """
     if weapon_detail is None:
         return None
-    rec = dob_loader.get_weapon(weapon_detail.id)
-    if rec is None and role_detail.conWeaponId is not None:
-        rec = dob_loader.get_con_weapon(role_detail.charId, role_detail.conWeaponId)
-    return rec
+    from .local_weapon_attribute import resolve_weapon_record
+
+    record, _is_skill = resolve_weapon_record(weapon_detail, role_detail)
+    return record
 
 
 def _is_inherit_skill_weapon(rec: WeaponRecord | None) -> bool:
@@ -258,24 +263,38 @@ def _collect_modes(
         logger.warning(f"[DNA 面板] 数据包未收录的魔之楔 id: {bonus.missing}（其词条未计入面板）")
 
 
-# 技能解锁被动的两档比例与解锁等级
-# 官方 get_skill_extend_level：技能 >=4 解锁第 1 档、>=8 解锁第 2 档。
-# 数据包 char.加成 只给两档合计；实测 33 个角色每项都是 40%:60%
-# （20/30、12/18、6/9、5/7.5、8/12、2/3、15/22.5），故按此比例拆分。
+# 两档比例与解锁等级：官方 get_skill_extend_level 为 >=4 第 1 档、>=8 第 2 档；
+# 比例 40%:60% 是 33 个角色的实测值（数据包只给两档合计）。
 _PASSIVE_TIER_RATIO = (0.4, 0.6)
 _PASSIVE_UNLOCK_LEVELS = (4, 8)
 
+# 溯源文案里的技能等级加成，形如「[残光]等级+2」
+_SKILL_LEVEL_BONUS_RE = re.compile(r"\[([^\]]+)]\s*等级\s*\+\s*(\d+)")
 
-def _skill_levels(role_detail: RoleDetail) -> dict[str, int]:
-    """官方 ``charDetail.skills`` → {技能名: 等级}"""
-    return {skill.skillName: skill.level for skill in role_detail.skills}
+
+def _skill_base_levels(role_detail: RoleDetail) -> list[int]:
+    """官方 ``skills`` 的**基础**等级（扣掉溯源加成），下标与 ``role_detail.skills`` 一致
+
+    接口返回的 ``level`` 含溯源加成（如「[残光]等级+2」），解锁判定必须用基础等级，
+    否则会提前计入档位（贝蕾妮卡 残光 接口 3 级、溯源 +2 → 基础 1 级）。
+    溯源只算前 ``gradeLevel`` 条（与官方 H5 口径一致）。
+    """
+    bonus: dict[str, int] = {}
+    for trace in role_detail.traces[: role_detail.gradeLevel]:
+        for name, text in _SKILL_LEVEL_BONUS_RE.findall(trace.description):
+            bonus[name] = bonus.get(name, 0) + int(text)
+    return [max(1, skill.level - bonus.get(skill.skillName, 0)) for skill in role_detail.skills]
 
 
 def _passive_tier_ratio(level: int | None) -> float:
-    """按技能等级取该被动的计入比例
+    """按技能等级取该被动的计入比例（**估算**）
 
     ``>=8`` 全计、``>=4`` 只计第 1 档、其余不计。技能不在官方返回里
     （``level is None``）时按「默认已学会」全计 —— 端口没返回不代表没学。
+
+    ⚠️ 这是估算，不是真值：真实门槛是「突破 5 阶 / 75 级 + **逐节点点亮**」
+    （节点要消耗材料），而 App 不返回节点点亮状态。实测有角色技能 8 级却
+    一个被动都没学（塔比瑟 攻击被动实际 0%，本估算会给 50%）。
     """
     if level is None:
         return 1.0
@@ -293,33 +312,26 @@ def _collect_char_bonus(
     """累加角色自身的技能解锁被动（数据包 ``char.加成``）
 
     数据包只给「两档合计」、没有解锁条件，这里按官方 ``get_skill_extend_level``
-    还原档位：第 1 档技能 4 级解锁、第 2 档 8 级解锁（两档比例 40%:60%）。
+    的 4/8 级规则还原档位（两档比例 40%:60%），技能等级用**扣掉溯源**的基础等级。
+    ⚠️ **属估算**：App 不返回技能节点是否点亮，只能按基础等级推断。
     每条被动挂在哪个技能下由转换阶段写入 ``passives[].skill`` / ``index``。
-    老数据没有 ``passives`` 时回退为「全部计入」。
     """
     entry = get_role_panel_entry(role_detail)
     if not entry:
         return
-    passives = entry.get("passives")
-    if not passives:
-        char_bonus = dob_loader.get_char_bonus(entry)
-        bonus.add(char_bonus)
-        reduce = char_bonus["extra"].get("减伤")
-        if reduce:
-            bonus.reduce_sources.append(float(reduce) / 100)
-        return
-    levels = _skill_levels(role_detail)
+    levels = _skill_base_levels(role_detail)
+    by_name = {skill.skillName: levels[index] for index, skill in enumerate(role_detail.skills)}
     buckets = {
         "main": bonus.main,
         "rate": bonus.rate,
         "elem_atk": bonus.elem_atk,
         "extra": bonus.extra,
     }
-    for passive in passives:
-        level = levels.get(passive["skill"] or "")
-        if level is None and passive["index"] < len(role_detail.skills):
+    for passive in entry.get("passives", []):
+        level = by_name.get(passive["skill"] or "")
+        if level is None and passive["index"] < len(levels):
             # 名字对不上时按同一顺序回退（官方 skills 顺序与数据包一致）
-            level = role_detail.skills[passive["index"]].level
+            level = levels[passive["index"]]
         ratio = _passive_tier_ratio(level)
         if ratio <= 0:
             continue

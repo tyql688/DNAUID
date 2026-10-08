@@ -199,6 +199,7 @@ class ConvertedWeapons(TypedDict):
 class DobMeta(TypedDict, total=False):
     """数据包元信息"""
 
+    format: int
     source: str
     packVersion: str | None
     packBuiltAt: str | None

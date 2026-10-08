@@ -33,6 +33,10 @@ async def ensure_data_ready() -> str | None:
     """
     if dob_loader.is_loaded():
         return None
+    # 先试本地读盘：旧目录迁移、或进程启动早于落盘时，读一次就好，不必联网
+    await asyncio.to_thread(dob_loader.reload)
+    if dob_loader.is_loaded():
+        return None
     if not DNAConfig.get_config("DobAutoUpdate").data:
         return "DOB 数据包未就绪，请先发送「dna更新数据包」"
     try:
@@ -49,8 +53,7 @@ async def dob_pack_status(bot: Bot, ev: Event) -> None:
     if not dob_loader.is_loaded():
         await bot.send("DOB 数据未加载（data/DNAUID/resource/dob/dob_data.json 缺失），\n请先发送「dna更新数据包」")
         return
-    meta = dob_pack.read_local_meta()
-    built_at = (meta.get("packBuiltAt") if meta else None) or "未知"
+    built_at = dob_loader.built_at() or "未知"
     await bot.send(
         f"DOB 数据包：v{dob_loader.version()}\n"
         f"打包时间：{built_at[:19].replace('T', ' ')}\n"

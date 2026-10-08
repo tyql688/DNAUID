@@ -199,6 +199,10 @@ COMMON_LEVEL_UP = [
 # 满级（80 级）倍率
 MAX_LEVEL_MULTIPLIER = COMMON_LEVEL_UP[-1]
 
+# 转换产物的格式版本：新增**必需**字段时必须 +1
+# 1 → 2：角色新增 ``passives``（技能解锁被动的归属技能）
+PACK_FORMAT = 2
+
 # 品质中文 → 数值（与官方接口 quality 1~5 对齐）
 QUALITY_TO_INT = {"白": 1, "绿": 2, "蓝": 3, "紫": 4, "金": 5}
 
@@ -603,18 +607,25 @@ def _convert_mods(mods: list[RawRecord]) -> ConvertedMods:
 
 
 def _convert_weapons(weapons: list[RawRecord]) -> ConvertedWeapons:
-    """武器列表 → {byId}，保留 1 级白值口径"""
+    """武器列表 → {byId}，保留 1 级白值口径
+
+    「攻击」是武器面板的必需字段：缺失即判数据包异常（否则会写出攻击为 None 的
+    记录，之后武器伤害静默算不出来，却已经覆盖了好缓存）。
+    """
     by_id: dict[str, WeaponRecord] = {}
     for weapon in weapons:
         weapon_id = _id_str(weapon, "id")
         if weapon_id is None:
             continue
+        attack = _num(weapon, "攻击")
+        if attack is None:
+            raise DobPackError(f"武器 {weapon_id} 缺少必需字段「攻击」")
         by_id[weapon_id] = WeaponRecord(
             id=_int(weapon, "id"),
             name=_str(weapon, "名称"),
             类型=_list_str(weapon, "类型"),
             伤害类型=_str(weapon, "伤害类型"),
-            攻击=_num(weapon, "攻击"),
+            攻击=attack,
             暴击=_num(weapon, "暴击"),
             暴伤=_num(weapon, "暴伤"),
             触发=_num(weapon, "触发"),
@@ -690,6 +701,7 @@ def convert_pack(zip_bytes: bytes) -> DobData:
 
     return DobData(
         _meta=DobMeta(
+            format=PACK_FORMAT,
             source="dna-builder 数据包（DOB）",
             packVersion=_str(manifest, "version"),
             packBuiltAt=_str(manifest, "builtAt"),
@@ -738,22 +750,34 @@ def _download_zip(package_file: str) -> bytes:
     raise last_error or RuntimeError("数据包下载失败")
 
 
-def _migrate_legacy() -> None:
-    """旧位置（dna_mod/data/）的 dob_data.json 迁移到 resource/dob/"""
+def migrate_legacy() -> bool:
+    """旧位置（dna_mod/data/）的 dob_data.json 迁移到 resource/dob/
+
+    返回是否真的迁移了 —— 调用方（loader）需要在迁移后**立即读盘**，
+    否则新位置明明有完整缓存，查询侧却仍是空的。
+    """
     try:
         if _LEGACY_DATA_PATH.resolve() == DATA_PATH.resolve() or not _LEGACY_DATA_PATH.exists() or DATA_PATH.exists():
-            return
+            return False
         DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(_LEGACY_DATA_PATH), str(DATA_PATH))
         logger.info(f"[DNA DOB] 旧数据文件已迁移到 {DATA_PATH}")
+        return True
     except OSError as error:
         logger.warning(f"[DNA DOB] 旧数据文件迁移失败（不影响使用）: {error!r}")
+        return False
 
 
 def _is_usable(data: DobData) -> bool:
-    """转换产物是否可用：有版本号且三个模块都非空"""
+    """转换产物是否可用：格式版本匹配 + 有版本号 + 三个模块都非空
+
+    格式版本不匹配（旧缓存缺新增必需字段）即判不可用 —— 触发重新转换，
+    而不是拿缺字段的旧数据硬算。
+    """
     meta = data.get("_meta")
     if not meta or not meta.get("packVersion"):
+        return False
+    if meta.get("format") != PACK_FORMAT:
         return False
     mods = data.get("mods")
     weapons = data.get("weapons")
@@ -766,7 +790,7 @@ def read_local_meta() -> DobMeta | None:
     结构不可用返回 None 会让 ``sync`` 重新下载 —— 否则空壳缓存会因版本号相同
     被一直跳过。
     """
-    _migrate_legacy()
+    migrate_legacy()
     try:
         raw: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
@@ -893,8 +917,8 @@ def startup_auto_sync() -> None:
 
 
 def is_data_ready() -> bool:
-    """本地是否已有可用的转换数据（版本号 + 三个模块都非空）"""
-    _migrate_legacy()
+    """本地是否已有可用的转换数据（格式版本 + 版本号 + 三个模块都非空）"""
+    migrate_legacy()
     try:
         data: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
@@ -907,12 +931,14 @@ __all__ = [
     "DobPackError",
     "init_if_needed",
     "is_data_ready",
+    "migrate_legacy",
     "COMMON_LEVEL_UP",
     "DATA_PATH",
     "MAX_LEVEL_MULTIPLIER",
     "QUALITY_MAX_LEVEL",
     "convert_from_file",
     "convert_pack",
+    "PACK_FORMAT",
     "read_local_meta",
     "validate",
     "startup_auto_sync",
