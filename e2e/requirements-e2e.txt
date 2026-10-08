@@ -1,0 +1,26 @@
+# e2e 依赖（mock 宿主与 Web 服务本身仅需标准库）
+# 以下为运行 pytest + 真实插件导入所需的依赖
+pytest>=8
+pytest-asyncio>=0.23
+pillow>=10
+sqlmodel>=0.0.22
+sqlalchemy>=2
+aiosqlite>=0.19
+httpx>=0.27
+jinja2>=3.1
+cachetools>=5
+pycryptodome>=3.23.0
+msgpack>=1.0.0
+websocket-client>=1.9.0
+aiohttp>=3.9
+async-timeout>=4
+starlette>=0.37
+greenlet>=3
+tzdata>=2024.1  # Windows 补时区数据（Asia/Shanghai）
+# 以下为 mock 宿主“全真实链路”所需：上游源码直引用的第三方包
+msgspec>=0.13        # plugins_config.models（GSC 配置模型，真实）
+watchfiles>=1.0       # run_web.py --watch 原生文件监听（Rust notify 后端）
+aiofiles>=0.8         # cookie_manager.qrlogin（真实二维码）
+qrcode>=7.3           # 同上（扫码登录二维码编码）
+fastapi>=0.115        # 挂载插件真实登录页（gsuid_core.web_app 等价实现）
+uvicorn>=0.20         # 同上（/dna/* 反代目标）
