@@ -9,6 +9,7 @@ from .damage_service import (
     RoleDamageBuild,
     get_calculation_skill_levels,
 )
+from .local_attribute import _role_element_cn
 from ..utils.fonts.dna_fonts import (
     dna_font_18,
     dna_font_20,
@@ -230,13 +231,14 @@ def _format_metric(
 def _build_attribute_metrics(
     base: AttributeBag,
     final: AttributeBag,
+    element_cn: str = "",
 ) -> list[_AttributeMetric]:
     raw_metrics = [
-        ("攻击", base.atk, final.atk, False),
+        (f"{element_cn}属性攻击" if element_cn else "攻击", base.atk, final.atk, False),
         ("生命", base.hp, final.hp, False),
         ("护盾", base.es, final.es, False),
         ("防御", base.def_, final.def_, False),
-        ("最大神志", base.sp, final.sp, False),
+        ("最大神智", base.sp, final.sp, False),
         ("技能威力", base.si, final.si, True),
         ("技能范围", base.sr, final.sr, True),
         ("技能耐久", base.ss, final.ss, True),
@@ -810,6 +812,7 @@ def _draw_success(
     attributes = _build_attribute_metrics(
         calculation.base_attribute,
         calculation.final_attribute,
+        _role_element_cn(build.role_detail),
     )
     weapons = _build_weapon_metrics(build, calculation)
     skill_panels = _build_skill_panels(build, calculation.skills)

@@ -237,7 +237,7 @@ class AttributeBag(_DamageModel):
     def_: float | None = Field(default=None, alias="def", description="防御")
     hp: float | None = Field(default=None, description="生命")
     es: float | None = Field(default=None, description="护盾")
-    sp: float | None = Field(default=None, description="最大神志或武器属性")
+    sp: float | None = Field(default=None, description="最大神智或武器属性")
     se: float | None = Field(default=None, description="技能效益")
     si: float | None = Field(default=None, description="技能威力")
     sr: float | None = Field(default=None, description="技能范围")

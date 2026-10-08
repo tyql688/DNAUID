@@ -21,17 +21,24 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 from dataclasses import field, dataclass
 
 from ..dna_mod import dob_loader
-from .local_attribute import AttrContext, compute_attr_context
+from .local_attribute import (
+    AttrContext,
+    _role_element_cn,
+    compute_attr_context,
+    collect_weapon_categories,
+)
+from ..dna_mod.dob_types import ResolvedSkillField
 
-try:
-    from gsuid_core.logger import logger
-except ImportError:  # pragma: no cover
-    import logging
+if TYPE_CHECKING:
+    from PIL import Image
 
-    logger = logging.getLogger("dna_local_damage")
+    from ..utils.api.model import RoleDetail, WeaponDetail
+
+from gsuid_core.logger import logger
 
 
 @dataclass(slots=True)
@@ -43,16 +50,11 @@ class LocalSkillPanel:
     rows: list[tuple[str, str]] = field(default_factory=list)
 
 
-def _fmt_num(value: float) -> str:
-    text = f"{value:.2f}".rstrip("0").rstrip(".")
-    return text or "0"
-
-
-def _fmt_field(field: dict) -> str:
+def _fmt_field(field: ResolvedSkillField) -> str:
     """字段显示值：格式模板优先，否则按名称语义选单位"""
     value = field["值"]
-    value2 = field.get("值2")
-    fmt = field.get("格式")
+    value2 = field["值2"]
+    fmt = field["格式"]
 
     def fmt_pct(v: float) -> str:
         return f"{v * 100:.1f}%"
@@ -92,42 +94,40 @@ def _fmt_field(field: dict) -> str:
     return fmt_pct(value)
 
 
-def _resolve_levels(role_detail) -> dict[str, int]:
+def _resolve_levels(role_detail: RoleDetail) -> dict[str, int]:
     """官方接口技能表 → {技能名: 结算等级}
 
     skills[].level 已含溯源加成（damage_service 发送官方请求时正是减去
     溯源加成得到基础等级），直接作为结算等级，封顶 12 级。
     """
     levels: dict[str, int] = {}
-    for skill in role_detail.skills or []:
-        name, level = getattr(skill, "skillName", None), getattr(skill, "level", None)
-        if not name or not isinstance(level, int) or level <= 0:
+    for skill in role_detail.skills:
+        if skill.level <= 0:
             continue
-        levels[name] = max(1, min(dob_loader.SKILL_MAX_LEVEL, level))
+        levels[skill.skillName] = max(1, min(dob_loader.SKILL_MAX_LEVEL, skill.level))
     return levels
 
 
 def build_local_skill_panels(
-    role_detail,
+    role_detail: RoleDetail,
     ctx: AttrContext,
 ) -> list[LocalSkillPanel]:
     """本地结算全部技能字段（替代官方接口的 skills 返回）"""
-    pack_skills = {s["名称"]: s for s in dob_loader.get_char_skills(role_detail.charId)}
+    pack_skills = {entry.get("名称", ""): entry for entry in dob_loader.get_char_skills(role_detail.charId)}
     levels = _resolve_levels(role_detail)
 
     panels: list[LocalSkillPanel] = []
-    for skill in role_detail.skills or []:
-        name = getattr(skill, "skillName", None)
-        pack = pack_skills.get(name)
-        if not name or not pack or not pack.get("字段"):
+    for skill in role_detail.skills:
+        pack = pack_skills.get(skill.skillName)
+        if pack is None or not pack.get("字段"):
             continue
-        level = levels.get(name, 10)
+        level = levels.get(skill.skillName, 10)
         fields = dob_loader.resolve_skill_fields(pack, level, ctx.tt)
         panels.append(
             LocalSkillPanel(
-                名称=name,
+                名称=skill.skillName,
                 显示等级=level,
-                rows=[(f["名称"], _fmt_field(f)) for f in fields],
+                rows=[(field["名称"], _fmt_field(field)) for field in fields],
             )
         )
     if not panels:
@@ -136,54 +136,68 @@ def build_local_skill_panels(
 
 
 def draw_local_damage_section(
-    role_detail,
-    con_weapon_detail=None,
-    close_weapon_detail=None,
-    ranged_weapon_detail=None,
-):
-    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 技能字段面板 + 三类武器伤害
+    role_detail: RoleDetail,
+    con_weapon_detail: WeaponDetail | None = None,
+    close_weapon_detail: WeaponDetail | None = None,
+    ranged_weapon_detail: WeaponDetail | None = None,
+) -> Image.Image:
+    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 三类武器伤害 + 技能字段面板
 
-    样式复用 damage_renderer 的官方面板绘制助手，口径与官方 H5 一致。
-    武器伤害 = 该武器本地最终攻击（白值 × 等级成长 × 魔之楔加成）；
-    数据不足时显示「无法计算」。
+    版式与配色沿用官方面板版（``damage_renderer``）的绘制助手，与官方 H5 口径一致：
+    主标题与各区块标题带渐变底纹 + 金色竖条；属性行标签用金色（``DATA_TEXT``）、
+    技能行标签用角色元素色，数值统一白色；行底纹按奇偶交替；长标签自动缩字号。
+    武器伤害 = 该武器一次攻击的期望伤害（``local_weapon_damage.compute_weapon_damage``，
+    打 dna-builder 默认目标「生命木桩130」，不含防御乘区）；数据不足时显示「无法计算」。
     """
     from PIL import Image, ImageDraw
 
     from .damage_renderer import (
-        BODY_FILL,
+        DATA_TEXT,
         PANEL_FILL,
         VALUE_TEXT,
-        HEADER_FILL,
         HEADER_TEXT,
         PANEL_WIDTH,
+        SECTION_GAP,
         DATA_COLUMNS,
+        HEADER_HEIGHT,
         PANEL_PADDING,
         PANEL_BODY_GAP,
         SECONDARY_TEXT,
         DATA_ROW_HEIGHT,
+        ELEMENT_TEXT_COLORS,
         PANEL_HEADER_HEIGHT,
+        WEAPON_FOOTER_HEIGHT,
+        _WeaponMetric,
+        _draw_data_rows,
+        _AttributeMetric,
         _draw_round_rect,
+        _draw_panel_header,
+        _draw_weapon_footer,
+        _draw_header_surface,
     )
-    from .local_weapon_attribute import compute_weapon_attribute
-    from ..utils.fonts.dna_fonts import dna_font_22, dna_font_24
+    from .local_weapon_damage import compute_weapon_damage
+    from ..utils.fonts.dna_fonts import dna_font_22, dna_font_30
+    from .local_weapon_attribute import resolve_inherit_source
 
-    ctx = compute_attr_context(role_detail, con_weapon_detail)
+    weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
+    weapon_categories = collect_weapon_categories(role_detail, weapon_details)
+    ctx = compute_attr_context(role_detail, con_weapon_detail, weapon_categories, weapon_details)
     panels = build_local_skill_panels(role_detail, ctx)
 
     # 角色属性：基础（官方 attribute 裸值）→ 最终（本地计算）
     attr = role_detail.attribute
     base_rate = {
-        "技能威力": getattr(attr, "skillIntensity", "100%"),
-        "技能范围": getattr(attr, "skillRange", "100%"),
-        "技能耐久": getattr(attr, "skillSustain", "100%"),
-        "技能效益": getattr(attr, "skillEfficiency", "100%"),
+        "技能威力": attr.skillIntensity,
+        "技能范围": attr.skillRange,
+        "技能耐久": attr.skillSustain,
+        "技能效益": attr.skillEfficiency,
     }
     base_map = {
-        "攻击": getattr(attr, "atk", None),
-        "生命": getattr(attr, "maxHp", None),
-        "护盾": getattr(attr, "maxES", None),
-        "防御": getattr(attr, "defense", None),
-        "最大神志": getattr(attr, "maxSp", None),
+        "攻击": attr.atk,
+        "生命": attr.maxHp,
+        "护盾": attr.maxES,
+        "防御": attr.defense,
+        "神智": attr.maxSp,
     }
     final_rate = {
         "技能威力": f"{ctx.tt['技能威力'] * 100:.0f}%",
@@ -193,154 +207,125 @@ def draw_local_damage_section(
     }
     final_rate["昂扬"] = f"{ctx.bonus.rate.get('昂扬', 0.0):.0f}%"
     final_rate["背水"] = f"{ctx.bonus.rate.get('背水', 0.0):.0f}%"
+    # 充盈威力：白板 100% +（角色 mod 加成 + 武器触发溢出的转化）
+    fullness = ctx.bonus.rate.get("充盈威力", 0.0) + ctx.bonus.extra.get("充盈威力", 0.0) + ctx.fullness_weapon
+    final_rate["充盈威力"] = f"{100 + fullness:.0f}%"
 
     def _base_num(name: str) -> str:
-        v = base_map.get(name)
-        return f"{float(v):,.2f}" if v is not None else "-"
+        return f"{base_map[name]:,.2f}"
 
     def _final_num(name: str) -> str:
         v = ctx.final_main.get(name)
         return f"{v:,.1f}" if v is not None else "-"
 
     def _base_rate(name: str) -> str:
-        raw = str(base_rate.get(name, "100%")).replace("%", "")
-        try:
-            return f"{float(raw):.0f}%"
-        except ValueError:
-            return "100%"
+        raw = base_rate[name].removesuffix("%")
+        return f"{float(raw):.0f}%" if raw.replace(".", "", 1).isdigit() else "100%"
 
+    elem_cn = _role_element_cn(role_detail)
+    atk_label = f"{elem_cn}属性攻击" if elem_cn else "攻击"
     ordered = [
-        ("攻击", _base_num("攻击"), _final_num("攻击")),
+        (atk_label, _base_num("攻击"), _final_num("攻击")),
         ("生命", _base_num("生命"), _final_num("生命")),
         ("护盾", _base_num("护盾"), _final_num("护盾")),
         ("防御", _base_num("防御"), _final_num("防御")),
-        ("最大神志", _base_num("最大神志"), _final_num("最大神志")),
+        ("最大神智", _base_num("神智"), _final_num("神智")),
         ("技能威力", _base_rate("技能威力"), final_rate["技能威力"]),
         ("技能范围", _base_rate("技能范围"), final_rate["技能范围"]),
         ("技能耐久", _base_rate("技能耐久"), final_rate["技能耐久"]),
         ("技能效益", _base_rate("技能效益"), final_rate["技能效益"]),
+        ("充盈威力", "100%", final_rate["充盈威力"]),
         ("昂扬", "0%", final_rate["昂扬"]),
         ("背水", "0%", final_rate["背水"]),
     ]
+    attr_metrics = [_AttributeMetric(label=name, value=f"{base} → {final}") for name, base, final in ordered]
 
-    def _panel_height(row_count: int) -> int:
-        return PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + row_count * DATA_ROW_HEIGHT + PANEL_PADDING
-
-    attr_rows = (len(ordered) + DATA_COLUMNS - 1) // DATA_COLUMNS
-    height = _panel_height(attr_rows) + PANEL_BODY_GAP
-    for panel in panels:
-        height += _panel_height((len(panel.rows) + DATA_COLUMNS - 1) // DATA_COLUMNS) + PANEL_BODY_GAP
-
-    # 三类武器伤害（近战/远程/同律）：本地最终攻击；未装备的类型不展示
-    weapon_metrics: list[tuple[str, str]] = []
-    for label, weapon_detail in (
-        ("近战", close_weapon_detail),
-        ("远程", ranged_weapon_detail),
-        ("同律", con_weapon_detail),
+    # 三类武器伤害（近战/远程/同律）：本地期望伤害（dna-builder 口径，打生命木桩130）
+    # inherit 型同律武器按被继承的近战/远程武器结算
+    con_inherit = (
+        resolve_inherit_source(con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
+        if con_weapon_detail is not None
+        else None
+    )
+    weapon_metrics: list[_WeaponMetric] = []
+    for label, weapon_detail, inherit_from in (
+        ("近战", close_weapon_detail, None),
+        ("远程", ranged_weapon_detail, None),
+        ("同律", con_weapon_detail, con_inherit),
     ):
         if weapon_detail is None:
             continue
-        computed = compute_weapon_attribute(weapon_detail, role_detail)
-        final_atk = computed.final_atk
-        value = f"{final_atk:,.0f}" if final_atk is not None else "无法计算"
-        weapon_metrics.append((label, weapon_detail.name, value))
+        damage = compute_weapon_damage(weapon_detail, role_detail, ctx, inherit_from)
+        value = f"{damage:,.0f}" if damage is not None else "无法计算"
+        weapon_metrics.append(_WeaponMetric(label=label, name=weapon_detail.name, value=value))
+
+    skill_panels = [
+        (
+            panel.名称,
+            panel.显示等级,
+            [_AttributeMetric(label=label, value=value) for label, value in panel.rows],
+        )
+        for panel in panels
+    ]
+
+    element_color = ELEMENT_TEXT_COLORS.get(role_detail.elementName, HEADER_TEXT)
+
+    def _row_count(metrics: list[_AttributeMetric]) -> int:
+        return max(1, (len(metrics) + DATA_COLUMNS - 1) // DATA_COLUMNS)
+
+    # 高度与绘制逐段一一对应，不再在面板底部留空
+    height = PANEL_PADDING + HEADER_HEIGHT
+    height += SECTION_GAP + PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + _row_count(attr_metrics) * DATA_ROW_HEIGHT
     if weapon_metrics:
-        height += 88
+        height += PANEL_BODY_GAP + WEAPON_FOOTER_HEIGHT
+    for _, _, rows in skill_panels:
+        height += SECTION_GAP + PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + _row_count(rows) * DATA_ROW_HEIGHT
+    height += PANEL_PADDING
 
     image = Image.new("RGBA", (PANEL_WIDTH, max(80, height)), (0, 0, 0, 0))
     _draw_round_rect(image, (0, 0, PANEL_WIDTH, image.height), 10, PANEL_FILL)
     draw = ImageDraw.Draw(image)
 
-    def _draw_metrics(metrics: list[tuple[str, str]], y: int) -> int:
-        row_count = (len(metrics) + DATA_COLUMNS - 1) // DATA_COLUMNS
-        cell_width = (PANEL_WIDTH - PANEL_PADDING * 2) // DATA_COLUMNS
-        for row in range(row_count):
-            row_y = y + row * DATA_ROW_HEIGHT
-            surface = Image.new("RGBA", (PANEL_WIDTH - PANEL_PADDING * 2, DATA_ROW_HEIGHT), BODY_FILL)
-            image.alpha_composite(surface, (PANEL_PADDING, row_y))
-            for column in range(DATA_COLUMNS):
-                index = row * DATA_COLUMNS + column
-                if index >= len(metrics):
-                    continue
-                label, value = metrics[index]
-                draw.text(
-                    (PANEL_PADDING + column * cell_width + 14, row_y + DATA_ROW_HEIGHT // 2),
-                    label,
-                    font=dna_font_22,
-                    fill=SECONDARY_TEXT,
-                    anchor="lm",
-                )
-                draw.text(
-                    (PANEL_PADDING + (column + 1) * cell_width - 14, row_y + DATA_ROW_HEIGHT // 2),
-                    value,
-                    font=dna_font_22,
-                    fill=VALUE_TEXT,
-                    anchor="rm",
-                )
-        return y + row_count * DATA_ROW_HEIGHT
-
+    # 主标题：渐变底纹 + 金色竖条
     y = PANEL_PADDING
-    # 区块头
-    draw.rectangle(
-        (PANEL_PADDING, y, PANEL_WIDTH - PANEL_PADDING, y + PANEL_HEADER_HEIGHT - 12),
-        fill=HEADER_FILL,
+    _draw_header_surface(
+        image,
+        (PANEL_PADDING, y, PANEL_WIDTH - PANEL_PADDING, y + HEADER_HEIGHT),
     )
+    draw.rectangle((PANEL_PADDING + 16, y + 20, PANEL_PADDING + 20, y + 44), fill=HEADER_TEXT)
     draw.text(
-        (PANEL_PADDING + 14, y + (PANEL_HEADER_HEIGHT - 12) // 2),
+        (PANEL_PADDING + 34, y + HEADER_HEIGHT // 2),
         "伤害计算",
-        font=dna_font_24,
-        fill=HEADER_TEXT,
-        anchor="lm",
+        HEADER_TEXT,
+        dna_font_30,
+        "lm",
     )
     draw.text(
-        (PANEL_WIDTH - PANEL_PADDING - 14, y + (PANEL_HEADER_HEIGHT - 12) // 2),
+        (PANEL_WIDTH - PANEL_PADDING - 16, y + HEADER_HEIGHT // 2),
         f"角色 {role_detail.charName}",
-        font=dna_font_22,
-        fill=SECONDARY_TEXT,
-        anchor="rm",
+        VALUE_TEXT,
+        dna_font_22,
+        "rm",
     )
-    y += PANEL_HEADER_HEIGHT + PANEL_BODY_GAP
+    y += HEADER_HEIGHT
 
     # 角色属性：基础 → 最终
-    attr_metrics = [(name, f"{base} → {final}") for name, base, final in ordered]
-    y = _draw_metrics(attr_metrics, y) + PANEL_BODY_GAP
+    y += SECTION_GAP
+    y = _draw_panel_header(image, draw, "角色属性", "基础 → 最终", HEADER_TEXT, SECONDARY_TEXT, y)
+    y += PANEL_BODY_GAP
+    y = _draw_data_rows(image, draw, attr_metrics, DATA_TEXT, VALUE_TEXT, y)
 
     # 三类武器伤害（近战/远程/同律）
     if weapon_metrics:
-        footer_h = 88
-        footer = Image.new("RGBA", (PANEL_WIDTH - PANEL_PADDING * 2, footer_h), (255, 255, 255, 14))
-        image.alpha_composite(footer, (PANEL_PADDING, y))
-        column_width = (PANEL_WIDTH - PANEL_PADDING * 2) // len(weapon_metrics)
-        for index, (label, name, value) in enumerate(weapon_metrics):
-            x = PANEL_PADDING + index * column_width
-            center_x = x + column_width // 2
-            if index > 0:
-                draw.line((x, y + 16, x, y + footer_h - 16), fill=(255, 255, 255, 40), width=1)
-            draw.text((center_x, y + 14), label, font=dna_font_22, fill=SECONDARY_TEXT, anchor="mm")
-            draw.text((center_x, y + 40), name, font=dna_font_22, fill=SECONDARY_TEXT, anchor="mm")
-            draw.text((center_x, y + 68), value, font=dna_font_24, fill=VALUE_TEXT, anchor="mm")
-        y += footer_h + PANEL_BODY_GAP
+        y += PANEL_BODY_GAP
+        y = _draw_weapon_footer(image, draw, weapon_metrics, y)
 
     # 技能面板
-    for panel in panels:
-        header_h = PANEL_HEADER_HEIGHT - 12
-        draw.rectangle((PANEL_PADDING, y, PANEL_WIDTH - PANEL_PADDING, y + header_h), fill=HEADER_FILL)
-        draw.text(
-            (PANEL_PADDING + 14, y + header_h // 2),
-            f"“{panel.名称}”",
-            font=dna_font_24,
-            fill=HEADER_TEXT,
-            anchor="lm",
-        )
-        draw.text(
-            (PANEL_WIDTH - PANEL_PADDING - 14, y + header_h // 2),
-            f"Lv.{panel.显示等级}",
-            font=dna_font_22,
-            fill=SECONDARY_TEXT,
-            anchor="rm",
-        )
-        y += header_h + PANEL_BODY_GAP
-        y = _draw_metrics(panel.rows, y) + PANEL_BODY_GAP
+    for name, level, rows in skill_panels:
+        y += SECTION_GAP
+        y = _draw_panel_header(image, draw, f"“{name}”", f"Lv.{level}", element_color, SECONDARY_TEXT, y)
+        y += PANEL_BODY_GAP
+        y = _draw_data_rows(image, draw, rows, element_color, VALUE_TEXT, y)
 
     return image
 

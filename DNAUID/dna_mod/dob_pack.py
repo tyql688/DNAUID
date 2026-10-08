@@ -38,7 +38,8 @@ zip 内：
    （验证：金 全盛·昂扬 攻击 1.54 → +10 时 154%，与 wiki 文本一致。）
 
 4. **武器**：保留 攻击/暴击/暴伤/触发/攻速 白值（1 级口径，与官方
-   getWeaponDetail.attribute 同口径）。
+   getWeaponDetail.attribute 同口径）、类型（精通判定用）与 伤害类型（切割/贯穿/震荡/灾厄）；
+   角色保留 精通 / 额外精通 —— 武器攻击的「精通倍率」判定依据。
 
 更新流程
 --------
@@ -53,40 +54,53 @@ zip 内：
 
 from __future__ import annotations
 
-import asyncio
 import io
-import json
 import os
-import shutil
+import json
 import time
+import shutil
+import asyncio
 import zipfile
-from typing import Any
 from pathlib import Path
 from datetime import datetime
 
-try:
-    from gsuid_core.logger import logger
-except ImportError:  # pragma: no cover - 允许脱离 gsuid_core 单测
-    import logging
-
-    logger = logging.getLogger("dna_dob_pack")
-
+import httpx
 import msgpack
 
-# 允许脱离 gsuid_core 环境复用（如本地脚本）：httpx 不可用时退回 urllib
-try:
-    import httpx
-except ImportError:  # pragma: no cover
-    httpx = None  # type: ignore[assignment]
+from gsuid_core.logger import logger
+
+from .dob_types import (
+    DobData,
+    DobMeta,
+    RawValue,
+    AttrValue,
+    CharEntry,
+    Condition,
+    ModEffect,
+    ModRecord,
+    RawRecord,
+    BonusZones,
+    SkillEntry,
+    SkillField,
+    WeaponRecord,
+    ConvertedMods,
+    ConvertedChars,
+    ConvertedWeapons,
+)
 
 # 数据文件统一放 data/DNAUID/resource/dob/（路径定义在 utils/resource/RESOURCE_PATH.py，
-# 下载、读取和状态查询共用）；脱离 gsuid_core 的独立环境回退到模块目录。
-# 旧位置 dna_mod/data/dob_data.json 在读取时自动迁移。
-try:
-    from ..utils.resource.RESOURCE_PATH import DOB_DATA_PATH as DATA_PATH
-except ImportError:  # pragma: no cover - 独立测试环境
-    DATA_PATH = Path(__file__).parent / "data" / "dob_data.json"
+# 下载、读取和状态查询共用）；旧位置 dna_mod/data/dob_data.json 在读取时自动迁移。
+from ..utils.resource.RESOURCE_PATH import DOB_DATA_PATH as DATA_PATH
+
 _LEGACY_DATA_PATH = Path(__file__).parent / "data" / "dob_data.json"
+
+
+class DobPackError(RuntimeError):
+    """数据包拉取 / 转换失败（网络、CDN、包格式、写盘）
+
+    底层异常在 ``sync()`` 的边界处一次性收敛成这一种，上层只需 catch 它。
+    """
+
 
 # 数据包 CDN 双源（与 dna-builder 客户端一致：OSS 主源 + R2 备源）
 CDN_BASES = (
@@ -253,8 +267,8 @@ def _attr_zone(key: str) -> tuple[str, str] | None:
     """
     if key in ("攻击", "生命", "防御", "护盾"):
         return ("main", key)
-    if key == "神智":  # 数据包键名 → 面板显示名
-        return ("main", "最大神志")
+    if key == "神智":
+        return ("main", key)
     if key in ("技能威力", "技能范围", "技能耐久", "技能效益", "充盈威力", "昂扬", "背水"):
         return ("rate", key)
     if key == "属性攻击":
@@ -266,7 +280,7 @@ def _round2(value: float) -> float:
     return round(value + 1e-9, 2)
 
 
-def _numeric_field(value: Any) -> bool:
+def _numeric_field(value: RawValue) -> bool:
     """字段值是否为数值或纯数值数组（文本型字段不进本地伤害计算）"""
     if isinstance(value, bool):
         return False
@@ -279,94 +293,223 @@ def _numeric_field(value: Any) -> bool:
     )
 
 
-def _convert_chars(chars: list[dict[str, Any]]) -> dict[str, Any]:
+# ── 原始包取值：逐处 isinstance 收窄，不用 Any ─────────────
+
+
+def _id_str(record: RawRecord, key: str) -> str:
+    """id 字段转字符串（与 ``str(record.get(key))`` 同口径）"""
+    return str(record.get(key))
+
+
+def _str(record: RawRecord, key: str) -> str | None:
+    """字符串字段；缺失或类型不符返回 None"""
+    value = record.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _int(record: RawRecord, key: str) -> int | None:
+    """整数字段（bool 不算）；缺失或类型不符返回 None"""
+    value = record.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _num(record: RawRecord, key: str) -> int | float | None:
+    """数值字段（bool 不算）；缺失或类型不符返回 None。保留 int 形态，避免产物出现 x.0"""
+    value = record.get(key)
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _num_or(record: RawRecord, key: str, default: float) -> float:
+    """数值字段，缺失取 default"""
+    value = _num(record, key)
+    return default if value is None else value
+
+
+def _scalar(record: RawRecord, key: str) -> int | str | None:
+    """int / str 标量字段（如 限定）；其余返回 None"""
+    value = record.get(key)
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, (int, str)) else None
+
+
+def _list_str(record: RawRecord, key: str) -> list[str]:
+    """字符串数组字段（如 类型 / 精通）"""
+    value = record.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _list_int(record: RawRecord, key: str) -> list[int]:
+    """整数数组字段（如同律武器的 skill）"""
+    value = record.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, int) and not isinstance(item, bool)]
+
+
+def _record(record: RawRecord, key: str) -> RawRecord | None:
+    """对象字段（如 生效）"""
+    value = record.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def _records(record: RawRecord, key: str) -> list[RawRecord]:
+    """对象数组字段（如同律武器 / 技能 / 字段）"""
+    value = record.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _lists(record: RawRecord, key: str) -> list[list[RawValue]]:
+    """数组的数组字段（如生效块的 条件）"""
+    value = record.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, list)]
+
+
+def _nums(record: RawRecord, key: str) -> dict[str, float]:
+    """{键: 数值} 字段（如武器 加成）；非数值项丢弃"""
+    value = record.get(key)
+    if not isinstance(value, dict):
+        return {}
+    return {name: item for name, item in value.items() if isinstance(item, (int, float)) and not isinstance(item, bool)}
+
+
+def _attr_value(record: RawRecord, key: str) -> AttrValue | None:
+    """标量或纯数值数组属性（如技能字段的 值 / 值2）；其余返回 None"""
+    value = record.get(key)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, list) and all(isinstance(v, (int, float)) for v in value):
+        return [v for v in value if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    return None
+
+
+def _attr_values(record: RawRecord, skip: frozenset[str]) -> dict[str, AttrValue]:
+    """扫描记录的数值属性（标量或纯数值数组），跳过 skip 里的键与 bool"""
+    out: dict[str, AttrValue] = {}
+    for key, value in record.items():
+        if key in skip or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            out[key] = value
+        elif isinstance(value, list) and value and all(isinstance(v, (int, float)) for v in value):
+            # 数组型属性：逐档取值（下标即等级），不随等级线性缩放，如 追袭 技能伤害 [-0.5]
+            out[key] = [v for v in value if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    return out
+
+
+def _convert_chars(chars: list[RawRecord]) -> ConvertedChars:
     """角色列表 → {byCharId, byName}，基础值折算 80 级、加成聚合为面板条目"""
-    by_char: dict[str, Any] = {}
-    by_name: dict[str, Any] = {}
+    by_char: dict[str, CharEntry] = {}
+    by_name: dict[str, str] = {}
     for char in chars:
-        char_id = str(char.get("id"))
-        bonus_zones: dict[str, dict[str, float]] = {"main": {}, "rate": {}, "elem_atk": {}, "extra": {}}
-        for key, value in (char.get("加成") or {}).items():
-            if not isinstance(value, (int, float)):
-                continue
+        char_id = _id_str(char, "id")
+        zones: dict[str, dict[str, float]] = {"main": {}, "rate": {}, "elem_atk": {}, "extra": {}}
+        for key, value in _nums(char, "加成").items():
             zone = _attr_zone(key)
             if zone is None:
                 # 隐藏属性（增伤/减伤/技能伤害等）：键名原样透传
-                bonus_zones["extra"][key] = bonus_zones["extra"].get(key, 0.0) + value * 100
+                zones["extra"][key] = zones["extra"].get(key, 0.0) + value * 100
                 continue
             zone_name, display = zone
             if zone_name == "elem_atk":
                 # 角色加成里的属性攻击键形如「水属性攻击」
                 elem = key.replace("属性攻击", "")
-                bonus_zones["elem_atk"][elem] = bonus_zones["elem_atk"].get(elem, 0.0) + value * 100
+                zones["elem_atk"][elem] = zones["elem_atk"].get(elem, 0.0) + value * 100
                 continue
-            bonus_zones[zone_name][display] = bonus_zones[zone_name].get(display, 0.0) + value * 100
+            zones[zone_name][display] = zones[zone_name].get(display, 0.0) + value * 100
 
-        con_weapons = [
-            {
-                "id": w.get("id"),
-                "名称": w.get("名称"),
-                "攻击": w.get("攻击"),
-                "暴击": w.get("暴击"),
-                "暴伤": w.get("暴伤"),
-                "触发": w.get("触发"),
-                "攻速": w.get("攻速"),
-            }
-            for w in (char.get("同律武器") or [])
+        con_weapons: list[WeaponRecord] = [
+            WeaponRecord(
+                id=_int(weapon, "id"),
+                名称=_str(weapon, "名称"),
+                类型=_list_str(weapon, "类型"),
+                伤害类型=_str(weapon, "伤害类型"),
+                攻击=_num(weapon, "攻击"),
+                暴击=_num(weapon, "暴击"),
+                暴伤=_num(weapon, "暴伤"),
+                触发=_num(weapon, "触发"),
+                攻速=_num(weapon, "攻速"),
+                # 继承型同律武器（inherit=melee/ranged）没有自己的伤害类型/攻击，
+                # 靠这些字段在被装备武器上取值（dna-builder CharBuild.syncSkillWeaponDamageType）
+                inherit=_str(weapon, "inherit"),
+                atk=_str(weapon, "atk"),
+                视为=_str(weapon, "视为"),
+                filter=_str(weapon, "filter"),
+                skill=_list_int(weapon, "skill"),
+            )
+            for weapon in _records(char, "同律武器")
         ]
 
-        entry = {
-            "id": char.get("id"),
-            "name": char.get("名称"),
-            "element": char.get("属性"),
+        char_name = _str(char, "名称")
+        entry = CharEntry(
+            id=_int(char, "id"),
+            name=char_name,
+            element=_str(char, "属性"),
+            # 武器精通（精通判定用；同律武器绑定角色，必然命中）
+            精通=_list_str(char, "精通"),
+            额外精通=_list_str(char, "额外精通"),
             # 1 级白值（查询侧按角色实际等级缩放）
-            "baseLv1": {
-                "攻击": char.get("基础攻击", 0),
-                "生命": char.get("基础生命", 0),
-                "护盾": char.get("基础护盾", 0),
-                "防御": char.get("基础防御", 0),
-                "最大神志": char.get("基础神智", 0),
+            baseLv1={
+                "攻击": _num_or(char, "基础攻击", 0),
+                "生命": _num_or(char, "基础生命", 0),
+                "护盾": _num_or(char, "基础护盾", 0),
+                "防御": _num_or(char, "基础防御", 0),
+                "神智": _num_or(char, "基础神智", 0),
             },
             # 80 级值（等级未知时的兜底，与 wiki 阶段表满级行一致）
-            "base": {
-                "攻击": _round2(char.get("基础攻击", 0) * MAX_LEVEL_MULTIPLIER),
-                "生命": round(char.get("基础生命", 0) * MAX_LEVEL_MULTIPLIER),
-                "护盾": round(char.get("基础护盾", 0) * MAX_LEVEL_MULTIPLIER),
-                "防御": char.get("基础防御", 0),
-                "最大神志": char.get("基础神智", 0),
+            base={
+                "攻击": _round2(_num_or(char, "基础攻击", 0) * MAX_LEVEL_MULTIPLIER),
+                "生命": round(_num_or(char, "基础生命", 0) * MAX_LEVEL_MULTIPLIER),
+                "护盾": round(_num_or(char, "基础护盾", 0) * MAX_LEVEL_MULTIPLIER),
+                "防御": _num_or(char, "基础防御", 0),
+                "神智": _num_or(char, "基础神智", 0),
             },
-            "bonus": bonus_zones,
-            "conWeapons": con_weapons,
+            bonus=BonusZones(
+                main=zones["main"],
+                rate=zones["rate"],
+                elem_atk=zones["elem_atk"],
+                extra=zones["extra"],
+            ),
+            conWeapons=con_weapons,
             # 技能（紧凑）：字段保留 名称/影响/值(逐档)/值2/格式/伤害类型，
             # 供本地伤害计算按等级取值并按面板属性乘区缩放（替代官方 H5 接口）
-            "skills": [
-                {
-                    "名称": skill.get("名称"),
-                    "类型": skill.get("类型"),
-                    "字段": [
-                        {
-                            "名称": f.get("名称"),
-                            "影响": f.get("影响"),
-                            "值": f.get("值"),
-                            "值2": f.get("值2"),
-                            "格式": f.get("格式"),
-                            "基础": f.get("基础"),
-                            "伤害类型": f.get("伤害类型"),
-                        }
-                        for f in (skill.get("字段") or [])
-                        if f.get("名称") is not None and _numeric_field(f.get("值"))
+            skills=[
+                SkillEntry(
+                    名称=_str(skill, "名称") or "",
+                    类型=_str(skill, "类型"),
+                    字段=[
+                        SkillField(
+                            名称=_str(field, "名称") or "",
+                            影响=_str(field, "影响"),
+                            值=_attr_value(field, "值"),
+                            值2=_attr_value(field, "值2"),
+                            格式=_str(field, "格式"),
+                            基础=_str(field, "基础"),
+                            伤害类型=_str(field, "伤害类型"),
+                        )
+                        for field in _records(skill, "字段")
+                        if field.get("名称") is not None and _numeric_field(field.get("值"))
                     ],
-                }
-                for skill in (char.get("技能") or [])
+                )
+                for skill in _records(char, "技能")
                 if skill.get("名称")
             ],
-        }
+        )
         by_char[char_id] = entry
-        by_name[char.get("名称")] = char_id
-    return {"byCharId": by_char, "byName": by_name}
+        if char_name:
+            by_name[char_name] = char_id
+    return ConvertedChars(byCharId=by_char, byName=by_name)
 
 
-def _convert_effect(effect: dict[str, Any] | None) -> dict[str, Any] | None:
+def _convert_effect(effect: RawRecord | None) -> ModEffect | None:
     """生效块 → {"conditions": [...], "attrs": {...}}；无条件或无数值属性时返回 None
 
     数据包形态：``{"条件": [["D趋向", ">=", 4]], "背水": 0.22}``。
@@ -376,89 +519,91 @@ def _convert_effect(effect: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     if not effect:
         return None
-    conditions = [list(c) for c in (effect.get("条件") or [])]
-    attrs: dict[str, Any] = {}
+    conditions: list[Condition] = [
+        [item for item in condition if isinstance(item, (str, int, float)) and not isinstance(item, bool)]
+        for condition in _lists(effect, "条件")
+    ]
+    attrs: dict[str, AttrValue] = {}
     for key, value in effect.items():
         if key == "条件" or isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
             attrs[key] = value
-        elif isinstance(value, list) and value and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
-            attrs[key] = list(value)
+        elif (
+            isinstance(value, list)
+            and value
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)
+        ):
+            attrs[key] = [v for v in value if isinstance(v, (int, float)) and not isinstance(v, bool)]
     if not conditions or not attrs:
         return None
-    return {"conditions": conditions, "attrs": attrs}
+    return ModEffect(conditions=conditions, attrs=attrs)
 
 
-def _convert_mods(mods: list[dict[str, Any]]) -> dict[str, Any]:
+def _convert_mods(mods: list[RawRecord]) -> ConvertedMods:
     """魔之楔列表 → {byId}，数值字段保留满级小数（数组型保留逐档取值），等级缩放放查询侧"""
-    by_id: dict[str, Any] = {}
+    by_id: dict[str, ModRecord] = {}
     for mod in mods:
-        mod_id = mod.get("id")
-        quality_cn = mod.get("品质") or "白"
+        quality_cn = _str(mod, "品质") or "白"
         quality = QUALITY_TO_INT.get(quality_cn, 1)
-        max_level = QUALITY_MAX_LEVEL.get(quality, 3)
-        attrs: dict[str, Any] = {}
-        for key, value in mod.items():
-            if key in _MOD_SKIP_KEYS or isinstance(value, bool):
-                continue
-            if isinstance(value, (int, float)):
-                attrs[key] = value
-            elif isinstance(value, list) and value and all(isinstance(v, (int, float)) for v in value):
-                # 数组型属性：逐档取值（下标即等级），不随等级线性缩放，如 追袭 技能伤害 [-0.5]
-                attrs[key] = list(value)
-        by_id[str(mod_id)] = {
-            "id": mod_id,
-            "name": mod.get("名称"),
-            "series": mod.get("系列"),
-            "quality": quality,
-            "qualityName": quality_cn,
-            "element": mod.get("属性"),
-            "modType": mod.get("类型"),
-            "limited": mod.get("限定"),
-            "polarity": mod.get("极性"),
-            "tolerance": mod.get("耐受"),
-            "maxLevel": max_level,
-            "attrs": attrs,
+        by_id[_id_str(mod, "id")] = ModRecord(
+            id=_int(mod, "id"),
+            name=_str(mod, "名称"),
+            series=_str(mod, "系列"),
+            quality=quality,
+            qualityName=quality_cn,
+            element=_str(mod, "属性"),
+            modType=_str(mod, "类型"),
+            limited=_scalar(mod, "限定"),
+            polarity=_str(mod, "极性"),
+            tolerance=_num(mod, "耐受"),
+            maxLevel=QUALITY_MAX_LEVEL.get(quality, 3),
+            attrs=_attr_values(mod, _MOD_SKIP_KEYS),
             # 条件生效属性（如 羽蛇·背水：D趋向>=4 时 背水+22%），判定在查询侧
-            "effect": _convert_effect(mod.get("生效")),
-        }
-    return {"byId": by_id}
+            effect=_convert_effect(_record(mod, "生效")),
+        )
+    return ConvertedMods(byId=by_id)
 
 
-def _convert_weapons(weapons: list[dict[str, Any]]) -> dict[str, Any]:
+def _convert_weapons(weapons: list[RawRecord]) -> ConvertedWeapons:
     """武器列表 → {byId}，保留 1 级白值口径"""
-    by_id: dict[str, Any] = {}
+    by_id: dict[str, WeaponRecord] = {}
     for weapon in weapons:
-        by_id[str(weapon.get("id"))] = {
-            "id": weapon.get("id"),
-            "name": weapon.get("名称"),
-            "types": weapon.get("类型") or [],
-            "攻击": weapon.get("攻击"),
-            "暴击": weapon.get("暴击"),
-            "暴伤": weapon.get("暴伤"),
-            "触发": weapon.get("触发"),
-            "攻速": weapon.get("攻速"),
-        }
-    return {"byId": by_id}
+        by_id[_id_str(weapon, "id")] = WeaponRecord(
+            id=_int(weapon, "id"),
+            name=_str(weapon, "名称"),
+            类型=_list_str(weapon, "类型"),
+            伤害类型=_str(weapon, "伤害类型"),
+            攻击=_num(weapon, "攻击"),
+            暴击=_num(weapon, "暴击"),
+            暴伤=_num(weapon, "暴伤"),
+            触发=_num(weapon, "触发"),
+            攻速=_num(weapon, "攻速"),
+            # 武器自身的精炼「加成」（如 囚鸟的刺羽 昂扬 0.15）：dna-builder 把近战/远程的
+            # 加成计入角色属性（同律不计），精缩放在查询侧（dob_loader.weapon_forge_bonus）
+            加成=_nums(weapon, "加成"),
+            # 带熔炉的武器加成不按精炼缩放（dna-builder LeveledWeapon.updateProperties）
+            hasForge=bool(weapon.get("熔炉")),
+        )
+    return ConvertedWeapons(byId=by_id)
 
 
-def convert_pack(zip_bytes: bytes) -> dict[str, Any]:
+def convert_pack(zip_bytes: bytes) -> DobData:
     """数据包 zip → 插件面板用的紧凑 JSON 结构（内存内完成）"""
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        manifest_text = zf.read("manifest.json").decode("utf-8")
-        manifest = json.loads(manifest_text)
-        char_data = msgpack.unpackb(zf.read("modules/char.data.msgpack"), raw=False)
-        mod_data = msgpack.unpackb(zf.read("modules/mod.data.msgpack"), raw=False)
-        weapon_data = msgpack.unpackb(zf.read("modules/weapon.data.msgpack"), raw=False)
+        manifest: RawRecord = json.loads(zf.read("manifest.json").decode("utf-8"))
+        char_data: RawValue = msgpack.unpackb(zf.read("modules/char.data.msgpack"), raw=False)
+        mod_data: RawValue = msgpack.unpackb(zf.read("modules/mod.data.msgpack"), raw=False)
+        weapon_data: RawValue = msgpack.unpackb(zf.read("modules/weapon.data.msgpack"), raw=False)
 
-    def exports(decoded: Any) -> list[dict[str, Any]]:
+    def exports(decoded: RawValue) -> list[RawRecord]:
         """模块解码结果是 {导出名: 数据}，取第一个数组导出（即数据本体）"""
         if isinstance(decoded, list):
-            return decoded
-        for value in (decoded or {}).values():
-            if isinstance(value, list):
-                return value
+            return [item for item in decoded if isinstance(item, dict)]
+        if isinstance(decoded, dict):
+            for value in decoded.values():
+                if isinstance(value, list):
+                    return [item for item in value if isinstance(item, dict)]
         return []
 
     chars = _convert_chars(exports(char_data))
@@ -468,43 +613,37 @@ def convert_pack(zip_bytes: bytes) -> dict[str, Any]:
     char_count = len(chars["byCharId"])
     weapon_count = len(weapons["byId"])
 
-    return {
-        "_meta": {
-            "source": "dna-builder 数据包（DOB）",
-            "packVersion": manifest.get("version"),
-            "packBuiltAt": manifest.get("builtAt"),
-            "chars": char_count,
-            "mods": mod_count,
-            "weapons": weapon_count,
-            "generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        },
-        "commonLevelUp": list(COMMON_LEVEL_UP),
-        **chars,
-        "mods": mods,
-        "weapons": weapons,
-    }
+    return DobData(
+        _meta=DobMeta(
+            source="dna-builder 数据包（DOB）",
+            packVersion=_str(manifest, "version"),
+            packBuiltAt=_str(manifest, "builtAt"),
+            chars=char_count,
+            mods=mod_count,
+            weapons=weapon_count,
+            generated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+        commonLevelUp=list(COMMON_LEVEL_UP),
+        byCharId=chars["byCharId"],
+        byName=chars["byName"],
+        mods={"byId": mods["byId"]},
+        weapons={"byId": weapons["byId"]},
+    )
 
 
-def _urllib_get(url: str, timeout: int) -> bytes:
-    """无 httpx 时的兜底下载（同步）"""
-    from urllib.request import urlopen
-
-    with urlopen(url, timeout=timeout) as response:  # noqa: S310 - 固定 CDN 地址
-        return response.read()
-
-
-def _fetch_json(url: str) -> Any:
-    """同步拉取 JSON（在线程里跑）"""
+def _fetch_json(url: str) -> list[RawRecord]:
+    """同步拉取版本列表 JSON（在线程里跑）；非数组视为失败，空数组由调用方判空"""
     last_error: Exception | None = None
     for base in CDN_BASES:
         full = f"{base}/{url}"
         try:
-            if httpx is not None:
-                response = httpx.get(full, timeout=20)
-                response.raise_for_status()
-                return response.json()
-            return json.loads(_urllib_get(full, 20).decode("utf-8"))
-        except Exception as error:  # noqa: BLE001
+            response = httpx.get(full, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise ValueError(f"版本列表不是数组: {type(payload).__name__}")
+            return [item for item in payload if isinstance(item, dict)]
+        except (httpx.HTTPError, ValueError) as error:
             last_error = error
     raise last_error or RuntimeError("数据包版本列表拉取失败")
 
@@ -515,13 +654,11 @@ def _download_zip(package_file: str) -> bytes:
     for base in CDN_BASES:
         full = f"{base}/{package_file}"
         try:
-            if httpx is not None:
-                with httpx.Client(timeout=120) as client:
-                    with client.stream("GET", full) as response:
-                        response.raise_for_status()
-                        return response.read()
-            return _urllib_get(full, 120)
-        except Exception as error:  # noqa: BLE001
+            with httpx.Client(timeout=120) as client:
+                with client.stream("GET", full) as response:
+                    response.raise_for_status()
+                    return response.read()
+        except httpx.HTTPError as error:
             last_error = error
     raise last_error or RuntimeError("数据包下载失败")
 
@@ -529,30 +666,26 @@ def _download_zip(package_file: str) -> bytes:
 def _migrate_legacy() -> None:
     """旧位置（dna_mod/data/）的 dob_data.json 迁移到 resource/dob/"""
     try:
-        if (
-            _LEGACY_DATA_PATH.resolve() == DATA_PATH.resolve()
-            or not _LEGACY_DATA_PATH.exists()
-            or DATA_PATH.exists()
-        ):
+        if _LEGACY_DATA_PATH.resolve() == DATA_PATH.resolve() or not _LEGACY_DATA_PATH.exists() or DATA_PATH.exists():
             return
         DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(_LEGACY_DATA_PATH), str(DATA_PATH))
         logger.info(f"[DNA DOB] 旧数据文件已迁移到 {DATA_PATH}")
-    except Exception as error:  # noqa: BLE001
+    except OSError as error:
         logger.warning(f"[DNA DOB] 旧数据文件迁移失败（不影响使用）: {error!r}")
 
 
-def read_local_meta() -> dict[str, Any] | None:
+def read_local_meta() -> DobMeta | None:
     """读本地已转换数据的 _meta；文件缺失/损坏返回 None"""
     _migrate_legacy()
     try:
-        raw = json.loads(DATA_PATH.read_text(encoding="utf-8"))
-        return raw.get("_meta")
+        raw: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return None
+    return raw.get("_meta")
 
 
-def convert_from_file(zip_path: str | Path) -> dict[str, Any]:
+def convert_from_file(zip_path: str | Path) -> DobData:
     """从本地 zip 文件转换（离线/调试用）"""
     return convert_pack(Path(zip_path).read_bytes())
 
@@ -569,25 +702,36 @@ def sync_from_file(zip_path: str | Path) -> str:
     """离线转换入口：把本地数据包 zip 转成 dob_data.json（不联网）"""
     data = convert_from_file(zip_path)
     _write_atomic(json.dumps(data, ensure_ascii=False))
-    meta = data["_meta"]
+    meta = data.get("_meta", {})
     return (
-        f"DOB 数据包转换完成：v{meta['packVersion']}"
-        f"（角色 {meta['chars']} / 魔之楔 {meta['mods']} / 武器 {meta['weapons']}）"
+        f"DOB 数据包转换完成：v{meta.get('packVersion')}"
+        f"（角色 {meta.get('chars')} / 魔之楔 {meta.get('mods')} / 武器 {meta.get('weapons')}）"
     )
 
 
 def sync(force: bool = False) -> tuple[bool, str]:
     """检查并同步最新数据包（同步阻塞，调用方应放线程里）
 
+    网络 / 文件 / 包格式这几类底层异常在此边界处收敛成 ``DobPackError``，
+    调用方（命令、定时任务、启动钩子）只需 catch 这一种。
+
     Returns:
         (是否发生变化, 提示消息)
     """
+    try:
+        return _sync_once(force)
+    except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+        raise DobPackError(str(error)) from error
+
+
+def _sync_once(force: bool) -> tuple[bool, str]:
+    """sync 的实际流程（异常由 sync 收敛）"""
     versions = _fetch_json("versions.json")
     if not versions:
         return False, "数据包版本列表为空"
     latest = versions[0]
-    version = latest.get("version")
-    package_file = latest.get("packageFile") or f"{version}.zip"
+    version = _str(latest, "version")
+    package_file = _str(latest, "packageFile") or f"{version}.zip"
 
     local_meta = read_local_meta()
     if not force and local_meta and local_meta.get("packVersion") == version:
@@ -596,15 +740,15 @@ def sync(force: bool = False) -> tuple[bool, str]:
     zip_bytes = _download_zip(package_file)
     data = convert_pack(zip_bytes)
     _write_atomic(json.dumps(data, ensure_ascii=False))
-    meta = data["_meta"]
+    meta = data.get("_meta", {})
     logger.info(f"[DNA DOB] 数据包已更新: v{version}")
     return True, (
-        f"DOB 数据包已更新到 v{version}（角色 {meta['chars']} / 魔之楔 {meta['mods']} / 武器 {meta['weapons']}）"
+        f"DOB 数据包已更新到 v{version}"
+        f"（角色 {meta.get('chars')} / 魔之楔 {meta.get('mods')} / 武器 {meta.get('weapons')}）"
     )
 
 
-# 手动与自动更新共用一把锁：检查、下载、替换和重载串行执行，
-# 避免两次更新同时进入、争用临时文件或交错写盘。
+# 手动与自动更新共用一把锁，检查/下载/替换/重载串行执行，避免争用临时文件或交错写盘。
 # asyncio.Lock 在 3.10+ 不再绑定事件循环，模块导入时创建是安全的。
 _update_lock = asyncio.Lock()
 
@@ -637,7 +781,7 @@ def startup_auto_sync() -> None:
             changed, message = await sync_async()
             if changed:
                 logger.info(f"[DNA DOB] {message}（启动检查）")
-        except Exception as error:  # noqa: BLE001
+        except DobPackError as error:
             logger.warning(f"[DNA DOB] 启动检查失败（不影响使用）: {error!r}")
 
     try:
@@ -650,14 +794,16 @@ def is_data_ready() -> bool:
     """本地是否已有可用的转换数据"""
     _migrate_legacy()
     try:
-        meta = json.loads(DATA_PATH.read_text(encoding="utf-8")).get("_meta")
-        return bool(meta and meta.get("packVersion"))
+        data: DobData = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return False
+    meta = data.get("_meta")
+    return bool(meta and meta.get("packVersion"))
 
 
 __all__ = [
     "CDN_BASES",
+    "DobPackError",
     "init_if_needed",
     "is_data_ready",
     "COMMON_LEVEL_UP",

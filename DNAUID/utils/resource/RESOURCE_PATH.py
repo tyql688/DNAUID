@@ -44,7 +44,7 @@ ANN_CARD_PATH = OTHER_PATH / "ann_card"
 CALENDAR_PATH = OTHER_PATH / "calendar"
 
 
-def init_dir():
+def init_dir() -> None:
     for i in [
         MAIN_PATH,
         SIGN_PATH,

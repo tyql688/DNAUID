@@ -42,18 +42,13 @@
 
 from __future__ import annotations
 
-from typing import Any
 from dataclasses import field, dataclass
 
-try:
-    from gsuid_core.logger import logger
-except ImportError:  # pragma: no cover
-    import logging
-
-    logger = logging.getLogger("dna_local_attribute")
+from gsuid_core.logger import logger
 
 from ..dna_mod import dob_loader
 from ..utils.api.model import Mode, RoleDetail, WeaponDetail
+from ..dna_mod.dob_types import CharEntry, ModRecord, ParsedAttrs, WeaponRecord
 
 # 面板 11 项属性的计算定义 ─────────────────────────────────────
 # 四维：数值型，最终 = 基础 × (1 + 加成/100)
@@ -62,8 +57,14 @@ _MAIN_KEYS: dict[str, str] = {
     "生命": "maxHp",
     "护盾": "maxES",
     "防御": "defense",
-    "最大神志": "maxSp",
+    "神智": "maxSp",
 }
+
+# 面板显示名覆盖：内部键名与数据包保持一致（「神智」），显示时用游戏叫法
+_PANEL_DISPLAY_NAME: dict[str, str] = {"神智": "最大神智"}
+
+# 角色自身属性（DOB ``char.element`` 口径）
+_ELEMENT_NAMES_CN = ("光", "暗", "水", "火", "雷", "风")
 
 # 率类属性：基础 100%（充盈威力是 0 基准的隐藏属性，见 _HIDDEN_ORDER）
 _RATE_DISPLAY: dict[str, str] = {
@@ -79,14 +80,6 @@ _EXTRA_DISPLAY: dict[str, str] = {
     "背水": "背水",
 }
 
-# 官方 attribute 字段名（主属性）—— 逐项回退用
-_ATTR_FIELD = {
-    "攻击": "atk",
-    "生命": "maxHp",
-    "防御": "defense",
-    "最大神智": "maxSp",
-}
-
 
 def reload_role_panel() -> None:
     """清空 DOB 数据（兼容旧接口名），下次查询重新读盘
@@ -96,13 +89,12 @@ def reload_role_panel() -> None:
     dob_loader.reload()
 
 
-def get_role_panel_entry(role_detail: RoleDetail) -> dict[str, Any] | None:
+def get_role_panel_entry(role_detail: RoleDetail) -> CharEntry | None:
     """按游戏 charId（优先）或角色名找到 DOB 数据条目"""
     entry = dob_loader.get_char(role_detail.charId)
     if entry:
         return entry
-    nm = getattr(role_detail, "charName", None)
-    return dob_loader.get_char_by_name(nm)
+    return dob_loader.get_char_by_name(role_detail.charName)
 
 
 @dataclass(slots=True)
@@ -118,18 +110,105 @@ class AttributeBonus:
     missing: list[int] = field(default_factory=list)  # 查不到数据的 thirdId
     reduce_sources: list[float] = field(default_factory=list)  # 减伤小数来源（乘法聚合用）
 
-    def add(self, parsed: dict[str, Any]) -> None:
-        for key in ("main", "rate", "elem_atk", "flat", "extra"):
-            bucket: dict[str, float] = getattr(self, key)
-            for k, v in (parsed.get(key) or {}).items():
-                bucket[k] = bucket.get(k, 0.0) + float(v)
-        self.raw.extend(parsed.get("raw") or [])
+    def add(self, parsed: ParsedAttrs) -> None:
+        for bucket, zone in (
+            (self.main, parsed["main"]),
+            (self.rate, parsed["rate"]),
+            (self.elem_atk, parsed["elem_atk"]),
+            (self.flat, parsed["flat"]),
+            (self.extra, parsed["extra"]),
+        ):
+            for key, value in zone.items():
+                bucket[key] = bucket.get(key, 0.0) + float(value)
+        self.raw.extend(parsed["raw"])
+
+
+def _weapon_record_of(role_detail: RoleDetail, weapon_detail: WeaponDetail | None) -> WeaponRecord | None:
+    """取武器记录（先查普通武器表，再查角色的同律武器条目）"""
+    if weapon_detail is None:
+        return None
+    rec = dob_loader.get_weapon(weapon_detail.id)
+    if rec is None and role_detail.conWeaponId is not None:
+        rec = dob_loader.get_con_weapon(role_detail.charId, role_detail.conWeaponId)
+    return rec
+
+
+def _is_inherit_skill_weapon(rec: WeaponRecord | None) -> bool:
+    """是否继承型同律武器（圆舞/剑非剑/疑星落 —— 复用被继承的近战/远程面板）
+
+    dna-builder 对这类武器一律不单独计数（类别计数、充盈威力汇总都排除），
+    因为它与被继承的那把武器共用同一份面板。
+    """
+    return rec is not None and bool(rec.get("inherit"))
+
+
+def collect_weapon_categories(
+    role_detail: RoleDetail,
+    weapon_details: list[WeaponDetail | None],
+) -> dict[str, int]:
+    """统计已装备武器的「类别」计数（条件词条按武器类别取值用，如 锋芒 增伤 [0.06, 0.18]）
+
+    与 dna-builder ``CharBuild.getConditionValues`` 同口径：近战/远程各计 1，
+    **继承型同律武器不额外计**（``if (this.skillWeapon && !this.skillWeapon.inherit)``），
+    空武器槽位不参与计数。
+    """
+    counts: dict[str, int] = {}
+    for wd in weapon_details:
+        rec = _weapon_record_of(role_detail, wd)
+        if _is_inherit_skill_weapon(rec):
+            continue
+        cat = dob_loader.weapon_category(rec)
+        if cat:
+            counts[cat] = counts.get(cat, 0) + 1
+    return counts
+
+
+def _is_weapon_mastered(role_detail: RoleDetail, record: WeaponRecord | None) -> bool:
+    """角色是否精通该武器类别（dna-builder CharBuild.isWeaponCategoryMastered）"""
+    mastered, _extra = dob_loader.get_char_mastery(role_detail.charId)
+    category = dob_loader.weapon_category(record)
+    return bool(category) and (category in mastered or "全部能力类型" in mastered or "全部类型" in mastered)
+
+
+def collect_weapon_forge_bonus(
+    role_detail: RoleDetail,
+    weapon_details: list[WeaponDetail | None],
+) -> list[ParsedAttrs]:
+    """近战/远程武器自身的精炼「加成」→ 解析后的面板分区（逐把一份）
+
+    与 dna-builder 同口径：``getTotalBonus(attr, "角色")`` 会把 melee / ranged
+    **武器实例的「加成」**计入角色属性（``isWeaponForgeEffective`` 为真时 ——
+    即无熔炉，或角色精通该武器类别）；**同律武器不在 melee/ranged 来源表里，
+    不计入角色面板**，所以这里跳过同律武器。
+    """
+    parsed_list: list[ParsedAttrs] = []
+    for weapon_detail in weapon_details:
+        if weapon_detail is None:
+            continue
+        record = _weapon_record_of(role_detail, weapon_detail)
+        if record is None or dob_loader.is_skill_weapon(record):
+            continue
+        if record.get("hasForge") and not _is_weapon_mastered(role_detail, record):
+            continue
+        bonus = dob_loader.weapon_forge_bonus(record, weapon_detail.skillLevel)
+        if not bonus:
+            continue
+        # 数据包的武器记录没有 element 字段，属性攻击键恒按角色自身属性结算
+        parsed = dob_loader.parse_attrs(bonus, None)
+        # 武器自身「加成」的武器作用域属性只进该武器面板（dna-builder 只进 table.melee/ranged），
+        # 不能进 bonus.extra —— 否则会经「角色侧穿透」泄漏到另一把武器。
+        for zone in (parsed["main"], parsed["rate"], parsed["extra"]):
+            for key in dob_loader.WEAPON_SCOPE_KEYS:
+                zone.pop(key, None)
+        parsed_list.append(parsed)
+    return parsed_list
 
 
 def _collect_modes(
     modes: list[Mode] | None,
     bonus: AttributeBonus,
     attrs_snapshot: dict[str, float] | None = None,
+    weapon_categories: dict[str, int] | None = None,
 ) -> None:
     """把一个装备位的 modes 加成累加进 bonus（含条件生效块，如 羽蛇·背水 D趋向>=4）
 
@@ -145,7 +224,7 @@ def _collect_modes(
         return
     polarity_count: dict[str, int] = {}
     id_count: dict[int, int] = {}
-    matched: list[tuple[Mode, dict[str, Any]]] = []
+    matched: list[tuple[Mode, ModRecord]] = []
     for mode in modes:
         if mode.id is None or mode.id <= 0:
             continue
@@ -166,20 +245,23 @@ def _collect_modes(
         if attrs and isinstance(attrs.get("减伤"), (int, float)):
             bonus.reduce_sources.append(float(attrs["减伤"]))
         # 条件生效块：条件满足时按等级缩放计入（如 羽蛇·背水 金+10 → 背水+22%）
-        if rec.get("effect") and dob_loader.is_effect_effective(
-            rec["effect"].get("conditions"),
+        effect = rec.get("effect")
+        if effect and dob_loader.is_effect_effective(
+            effect.get("conditions", []),
             polarity_count,
             id_count,
             attrs_snapshot,
         ):
             # 数组形态的条件属性（如 锋芒 增伤 [0.06, 0.18]）按
             # min(条件属性值 × v1, v2) 结算，条件属性值来自极性/id 计数与属性快照
-            base_values: dict[str, float] = {
-                "*id": float(max(id_count.values())) if id_count else 0.0
-            }
+            base_values: dict[str, float] = {"*id": float(max(id_count.values())) if id_count else 0.0}
             for pol, count in polarity_count.items():
                 base_values[f"{pol}趋向"] = float(count)
-            base_values.update(attrs_snapshot or {})
+            if attrs_snapshot is not None:
+                base_values.update(attrs_snapshot)
+            # 武器类别计数（如 锋芒 的 ["单手剑","*"] → min(单手剑数量 × v1, v2)）
+            if weapon_categories is not None:
+                base_values.update(weapon_categories)
             eff_attrs = dob_loader.get_effect_attrs(rec, mode.level, base_values)
             bonus.add(dob_loader.parse_attrs(eff_attrs, rec.get("element")))
             if isinstance(eff_attrs.get("减伤"), (int, float)):
@@ -203,7 +285,7 @@ def _collect_char_bonus(
         return
     char_bonus = dob_loader.get_char_bonus(entry)
     bonus.add(char_bonus)
-    reduce = (char_bonus.get("extra") or {}).get("减伤")
+    reduce = char_bonus["extra"].get("减伤")
     if reduce:
         bonus.reduce_sources.append(float(reduce) / 100)
 
@@ -216,7 +298,7 @@ def _condition_snapshot(base_main: dict[str, float], bonus: AttributeBonus) -> d
     效益/范围/耐久与技能计算共用同一套上限截断（175%/280%/400%）。
     """
     return {
-        "神智": float(base_main.get("最大神志", 0.0) or 0.0) * (1 + bonus.main.get("最大神志", 0.0) / 100),
+        "神智": float(base_main.get("神智", 0.0) or 0.0) * (1 + bonus.main.get("神智", 0.0) / 100),
         "技能威力": 1 + bonus.rate.get("技能威力", 0.0) / 100,
         "技能效益": min(1 + bonus.rate.get("技能效益", 0.0) / 100, 1.75),
         "技能耐久": min(1 + bonus.rate.get("技能耐久", 0.0) / 100, 4),
@@ -230,8 +312,10 @@ def collect_attribute_bonus(
     role_detail: RoleDetail,
     con_weapon_detail: WeaponDetail | None = None,
     base_main: dict[str, float] | None = None,
+    weapon_categories: dict[str, int] | None = None,
+    weapon_details: list[WeaponDetail | None] | None = None,
 ) -> AttributeBonus:
-    """汇总角色魔之楔 + 角色加成的面板加成（含条件生效，不动点迭代至收敛）
+    """汇总角色魔之楔 + 角色加成 + 携带武器加成的面板加成（含条件生效，不动点迭代至收敛）
 
     与 dna-builder 的循环同构：先按静态条件（趋向/*id）算一轮 → 用当前属性
     快照判「属性门槛」类条件 → 有变化就带着新快照重算，最多 3 轮收敛
@@ -239,14 +323,20 @@ def collect_attribute_bonus(
 
     ⚠️ 不收 ``con_weapon_detail.modes`` —— 同律武器的专属 mod 只进
     同律武器自己的面板，不进角色面板。
+    ✅ 收**近战/远程武器自身的「加成」**（``weapon_details`` 里的非同类同律武器）
+    —— dna-builder ``getTotalBonus(attr, "角色")`` 会把它计入角色属性。
     """
     if base_main is None:
         base_main, _ = _base_main_values(role_detail)
+    details = weapon_details if weapon_details is not None else []
+    forge_parsed = collect_weapon_forge_bonus(role_detail, details)
 
     def _run(snapshot: dict[str, float] | None) -> AttributeBonus:
         bonus = AttributeBonus()
-        _collect_modes(role_detail.modes, bonus, snapshot)
+        _collect_modes(role_detail.modes, bonus, snapshot, weapon_categories)
         _collect_char_bonus(role_detail, bonus)
+        for parsed in forge_parsed:
+            bonus.add(parsed)
         return bonus
 
     bonus = _run(None)
@@ -277,6 +367,9 @@ class FinalAttribute:
     rows: list[tuple[str, str]]  # 标准行 [(显示名, 显示值)]
     base_source: str = "attribute"  # "dob" / "attribute"（调试用）
     matched: bool = False
+    # 本次计算用的加成汇总（含条件生效块）；武器面板/伤害结算需要它取
+    # 「可穿透到武器」的角色侧属性（暴击/暴伤/触发/攻速），避免重复计算
+    bonus: AttributeBonus | None = None
     # 隐藏属性行（增伤/技能伤害/减伤/有效生命/充盈威力 及其他非零隐藏属性），
     # 渲染在标准 12 行之后
     hidden_rows: list[tuple[str, str]] = field(default_factory=list)
@@ -284,17 +377,14 @@ class FinalAttribute:
 
 def _official_main_values(role_detail: RoleDetail) -> dict[str, float]:
     """官方 ``attribute`` 里能取到的四维裸值（回退用，口径不统一）"""
-    out: dict[str, float] = {}
-    for name, field_name in _MAIN_KEYS.items():
-        if name == "护盾":
-            continue
-        v = getattr(role_detail.attribute, field_name, None)
-        if v is not None:
-            out[name] = float(v)
-    es = getattr(role_detail.attribute, "maxES", None)
-    if es is not None:
-        out["护盾"] = float(es)
-    return out
+    attribute = role_detail.attribute
+    return {
+        "攻击": float(attribute.atk),
+        "生命": float(attribute.maxHp),
+        "防御": float(attribute.defense),
+        "神智": float(attribute.maxSp),
+        "护盾": float(attribute.maxES),
+    }
 
 
 def _base_main_values(role_detail: RoleDetail) -> tuple[dict[str, float], str]:
@@ -310,7 +400,7 @@ def _base_main_values(role_detail: RoleDetail) -> tuple[dict[str, float], str]:
     source = "attribute"
 
     if entry:
-        base = dob_loader.scaled_base(entry, getattr(role_detail, "level", None))
+        base = dob_loader.scaled_base(entry, role_detail.level)
         for name in _MAIN_KEYS:
             _v = base.get(name)
             if _v is not None:
@@ -333,8 +423,8 @@ def _base_main_values(role_detail: RoleDetail) -> tuple[dict[str, float], str]:
 def _role_element_cn(role_detail: RoleDetail) -> str:
     """角色自身属性（中文单字：光/暗/水/火/雷/风），取自 DOB 数据"""
     entry = get_role_panel_entry(role_detail)
-    elem = str((entry or {}).get("element") or "")
-    return elem if elem in ("光", "暗", "水", "火", "雷", "风") else ""
+    elem = entry.get("element", "") if entry else ""
+    return elem if elem in _ELEMENT_NAMES_CN else ""
 
 
 def _elem_atk_multiplier(bonus: AttributeBonus, role_detail: RoleDetail) -> float:
@@ -359,6 +449,46 @@ def _elem_atk_multiplier(bonus: AttributeBonus, role_detail: RoleDetail) -> floa
     return 1.0 + total / 100.0
 
 
+def collect_fullness_conversion(
+    role_detail: RoleDetail,
+    weapon_details: list[WeaponDetail | None] | None,
+    bonus: AttributeBonus | None = None,
+) -> float:
+    """武器触发率溢出 100% 的部分按该武器「充盈转化」转为角色「充盈威力」
+
+    与 dna-builder ``CharBuild.getWeaponFullness`` 同口径：
+
+        触发率 = 武器面板触发率（基础触发 × (1 + 武器自身精炼加成 + 该武器槽 mod + 角色侧穿透)）
+        转化率 = 1 + 该武器槽 mod 的充盈转化加成（基础 1）
+        贡献   = max(0, 触发率 - 1) × 转化率
+
+    触发率必须复用武器面板的完整口径 —— 只算该武器槽的 mod 会漏掉武器自身精炼加成
+    （如 孤子的缚锁 精炼 5 的 触发 +150%）。返回百分比增量（如 18.0 表示 +18%）。
+    """
+    from .local_weapon_attribute import resolve_weapon_panel
+
+    details = weapon_details if weapon_details is not None else []
+    total = 0.0
+    for weapon_detail in details:
+        if weapon_detail is None:
+            continue
+        rec = _weapon_record_of(role_detail, weapon_detail)
+        if _is_inherit_skill_weapon(rec):
+            # 继承型同律武器复用被继承武器的面板，不单独计入
+            # （dna-builder CharBuild.getAllFullnessWeapons 同样排除）
+            continue
+        conversion = 1.0  # 每把武器固定的基础转化 1
+        for mode in weapon_detail.modes:
+            attrs = dob_loader.get_mod_attrs(mode.id, mode.level, mode.quality)
+            if not attrs:
+                continue
+            conversion += attrs.get("充盈转化", 0.0)
+        panel = resolve_weapon_panel(weapon_detail, role_detail, bonus)
+        trigger_rate = round(panel.trigger * 100) / 100
+        total += max(0.0, trigger_rate - 1.0) * conversion * 100
+    return total
+
+
 @dataclass(slots=True)
 class AttrContext:
     """本地伤害/面板共用的属性上下文
@@ -375,17 +505,28 @@ class AttrContext:
     source: str
     matched: bool
     tt: dict[str, float]
+    # 武器触发率溢出 100% 的部分按「充盈转化」转成的「充盈威力」增量（百分比）
+    fullness_weapon: float = 0.0
 
 
 def compute_attr_context(
     role_detail: RoleDetail,
     con_weapon_detail: WeaponDetail | None = None,
+    weapon_categories: dict[str, int] | None = None,
+    weapon_details: list[WeaponDetail | None] | None = None,
 ) -> AttrContext:
     """计算面板与本地伤害共用的属性上下文（最终四维原始值 + 技能乘区）"""
     base_main, source = _base_main_values(role_detail)
-    bonus = collect_attribute_bonus(role_detail, con_weapon_detail, base_main)
+    bonus = collect_attribute_bonus(
+        role_detail,
+        con_weapon_detail,
+        base_main,
+        weapon_categories,
+        weapon_details,
+    )
     elem_mult = _elem_atk_multiplier(bonus, role_detail)
     reduce_frac = dob_loader.get_damage_reduce(bonus.reduce_sources)
+    fullness_weapon = collect_fullness_conversion(role_detail, weapon_details, bonus)
 
     final_main: dict[str, float] = {}
     for name in _MAIN_KEYS:
@@ -394,7 +535,11 @@ def compute_attr_context(
             continue
         final_value = float(base_value) * (1 + bonus.main.get(name, 0.0) / 100)
         if name == "攻击":
-            final_value *= elem_mult
+            # 攻击吃「属性攻击」独立乘区，保留两位小数（dna-builder calculateAttributes）
+            final_value = round(final_value * elem_mult * 100) / 100
+        else:
+            # 生命/护盾/防御/神智最终取整（dna-builder Math.round）
+            final_value = round(final_value)
         final_main[name] = final_value
 
     def _rate1(key: str) -> float:
@@ -415,15 +560,18 @@ def compute_attr_context(
         source=source,
         matched=get_role_panel_entry(role_detail) is not None,
         tt=tt,
+        fullness_weapon=fullness_weapon,
     )
 
 
 def compute_final_attribute(
     role_detail: RoleDetail,
     con_weapon_detail: WeaponDetail | None = None,
+    weapon_categories: dict[str, int] | None = None,
+    weapon_details: list[WeaponDetail | None] | None = None,
 ) -> FinalAttribute:
     """本地计算角色最终属性，返回面板标准行 + 隐藏属性行"""
-    ctx = compute_attr_context(role_detail, con_weapon_detail)
+    ctx = compute_attr_context(role_detail, con_weapon_detail, weapon_categories, weapon_details)
     bonus = ctx.bonus
     source = ctx.source
     matched = ctx.matched
@@ -434,10 +582,13 @@ def compute_final_attribute(
     final_main = dict(ctx.final_main)
 
     # 四维：基础 × (1 + 加成/100)（已在 compute_attr_context 中算好原始值）
+    # 「攻击」按角色自身属性显示为「X属性攻击」（与游戏面板一致）
+    elem_cn = _role_element_cn(role_detail)
     for name in _MAIN_KEYS:
         if name not in final_main:
             continue
-        rows.append((name, _fmt_value(final_main[name], percent=False)))
+        display = f"{elem_cn}属性攻击" if (name == "攻击" and elem_cn) else _PANEL_DISPLAY_NAME.get(name, name)
+        rows.append((display, _fmt_value(final_main[name], percent=False)))
 
     # 率类：100 + 加成；效益/范围/耐久与技能计算共用上限截断（ctx.tt）
     for key, display in _RATE_DISPLAY.items():
@@ -452,7 +603,8 @@ def compute_final_attribute(
         rows.append((display, _fmt_value(pct, percent=True)))
 
     # 充盈威力：显示口径与率类一致（白板 100% + 加成）；伤害结算公式仍为 (1 + 充盈威力增量)
-    fullness = bonus.rate.get("充盈威力", 0.0) + bonus.extra.get("充盈威力", 0.0)
+    # 加成 = 角色 mod 的充盈威力 + Σ 武器触发率溢出 × 该武器充盈转化（dna-builder calculateWeaponAttributes）
+    fullness = bonus.rate.get("充盈威力", 0.0) + bonus.extra.get("充盈威力", 0.0) + ctx.fullness_weapon
     rows.append(("充盈威力", _fmt_value(100 + fullness, percent=True)))
 
     # ── 隐藏属性行（0 基准，渲染在标准行之后）──────────────────
@@ -473,18 +625,38 @@ def compute_final_attribute(
 
     # 其余非零隐藏属性（追加伤害/多重/歧视/攻击范围…）按名追加
     for key in sorted(bonus.extra):
-        if key in ("增伤", "技能伤害", "减伤", "充盈威力"):
+        # 增伤/技能伤害/减伤/充盈威力/充盈转化 已有专门行；暴击/暴伤/触发/攻速 是武器作用域
+        # 属性（attrAllowCharToWeapon 白名单），只在武器面板显示，故不列进隐藏行。
+        if key in (
+            "增伤",
+            "技能伤害",
+            "减伤",
+            "充盈威力",
+            "充盈转化",
+            "暴击",
+            "暴伤",
+            "触发",
+            "攻速",
+        ):
             continue
         if abs(bonus.extra[key]) > 1e-9:
             hidden.append((key, _fmt_value(bonus.extra[key], percent=True)))
 
-    return FinalAttribute(rows=rows, base_source=source, matched=matched, hidden_rows=hidden)
+    return FinalAttribute(
+        rows=rows,
+        base_source=source,
+        matched=matched,
+        hidden_rows=hidden,
+        bonus=bonus,
+    )
 
 
 __all__ = [
     "AttributeBonus",
     "FinalAttribute",
     "collect_attribute_bonus",
+    "collect_weapon_categories",
+    "collect_fullness_conversion",
     "compute_final_attribute",
     "get_role_panel_entry",
     "reload_role_panel",

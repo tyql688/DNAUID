@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from ..dna_mod import dob_loader
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_FIRE_BRICK,
@@ -15,8 +16,12 @@ from ..utils.image import (
     get_smooth_drawer,
 )
 from ..utils.api.model import Mode, RoleDetail, WeaponDetail
+from ..dna_mod.dob_types import ModRecord
 from ..utils.fonts.dna_fonts import dna_font_24, dna_font_26
 from .local_weapon_attribute import compute_weapon_attribute
+
+if TYPE_CHECKING:
+    from .local_attribute import AttributeBonus
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
 
@@ -36,12 +41,28 @@ def _open_rgba(path: Path) -> Image.Image:
         return image.convert("RGBA")
 
 
+def _mode_record(mode: Mode) -> ModRecord | None:
+    """取 mod 的 DOB 数据包记录
+
+    官方接口对部分**武器专属 mod** 只返回 ``id`` / ``level``，
+    品质、名称、图标全空（实测 201001「幻光闪烁」），要靠数据包补齐。
+    """
+    if mode.id is None or mode.id <= 0:
+        return None
+    return dob_loader.get_by_third_id(mode.id)
+
+
 def _mode_quality(mode: Mode) -> int:
     if mode.id == -1:
         return 1
-    if mode.quality is None:
-        raise RuntimeError(f"武器 Mod {mode.id} 缺少品质")
-    return mode.quality
+    if mode.quality is not None:
+        return mode.quality
+    # 官方接口缺品质 → 回退数据包；再缺则按最低品质渲染（不阻断整张卡片）
+    record = _mode_record(mode)
+    quality = record.get("quality") if record else None
+    if quality is not None and quality > 0:
+        return quality
+    return 1
 
 
 async def _draw_mode_card(
@@ -56,8 +77,12 @@ async def _draw_mode_card(
         return card
     if mode.id <= 0:
         raise RuntimeError(f"武器 Mod ID 非法: {mode.id}")
-    if mode.name is None or mode.icon is None or mode.level is None:
-        raise RuntimeError(f"武器 Mod {mode.id} 详情不完整")
+
+    # 官方接口对部分武器专属 mod 只返回 id/level → 名称回退数据包；
+    # 仍缺则只画底图不写文字（图标缺失时 get_mod_img 返回空白图），不阻断整张卡片。
+    record = _mode_record(mode)
+    name = mode.name or (record.get("name") if record else None)
+    level = mode.level or 0
 
     mod_image = await get_mod_img(mode.id, mode.icon)
     mod_image = mod_image.resize((180, 180))
@@ -65,14 +90,15 @@ async def _draw_mode_card(
 
     draw = ImageDraw.Draw(card)
     name_position = (115, 180) if side == "left" else (140, 180)
-    draw.text(
-        name_position,
-        mode.name,
-        COLOR_WHITE,
-        dna_font_26,
-        "mm",
-    )
-    if mode.level > 0:
+    if name:
+        draw.text(
+            name_position,
+            name,
+            COLOR_WHITE,
+            dna_font_26,
+            "mm",
+        )
+    if level > 0:
         badge_box = (54, 30, 106, 60) if side == "left" else (134, 30, 186, 60)
         badge_position = (80, 44) if side == "left" else (160, 44)
         get_smooth_drawer().rounded_rectangle(
@@ -160,6 +186,8 @@ async def _draw_weapon_info(
     weapon_detail: WeaponDetail,
     info_y: int,
     role_detail: RoleDetail,
+    bonus: AttributeBonus | None = None,
+    inherit_from: WeaponDetail | None = None,
 ) -> None:
     weapon_background = _open_rgba(TEXT_PATH / "weapon_bg.png")
     weapon_image = await get_weapon_img(
@@ -203,8 +231,8 @@ async def _draw_weapon_info(
 
     attribute_panel = _open_rgba(TEXT_PATH / "weapon_attr.png")
     attribute_draw = ImageDraw.Draw(attribute_panel)
-    # 本地计算属性总值（副属性本地算 + 震荡攻击走 calculateWeapon 基础值），与游戏面板对齐
-    computed = compute_weapon_attribute(weapon_detail, role_detail)
+    # 武器属性全部本地计算（攻击 = 白值 × 等级成长 × 魔之楔加成 × 精通倍率），与游戏面板对齐
+    computed = compute_weapon_attribute(weapon_detail, role_detail, bonus, inherit_from)
     icon_names = (
         "icon16.png",
         "icon17.png",
@@ -243,6 +271,8 @@ async def draw_weapon_detail_section(
     weapon_detail: WeaponDetail,
     title: str,
     role_detail: RoleDetail,
+    bonus: AttributeBonus | None = None,
+    inherit_from: WeaponDetail | None = None,
 ) -> Image.Image:
     placements, info_y, section_height = _mode_layout(
         weapon_detail.modes,
@@ -256,5 +286,5 @@ async def draw_weapon_detail_section(
     for mode, side, x, y in placements:
         mode_card = await _draw_mode_card(mode, side)
         section.alpha_composite(mode_card, (x, y))
-    await _draw_weapon_info(section, weapon_detail, info_y, role_detail)
+    await _draw_weapon_info(section, weapon_detail, info_y, role_detail, bonus, inherit_from)
     return section

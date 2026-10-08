@@ -37,7 +37,7 @@ from ..utils.image import (
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
 from .local_damage import draw_local_damage_section
 from ..utils.dna_api import dna_api
-from .local_attribute import compute_final_attribute
+from .local_attribute import _role_element_cn, compute_final_attribute, collect_weapon_categories
 from .weapon_renderer import draw_weapon_detail_section
 from ..utils.api.model import (
     WeaponDetail,
@@ -63,6 +63,7 @@ from ..utils.fonts.dna_fonts import (
     dna_font_26,
     dna_font_30,
 )
+from .local_weapon_attribute import resolve_inherit_source
 from ..utils.master_char_const import MASTER_CHAR_NAME_BY_ID, is_master_char_id
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
@@ -77,7 +78,7 @@ attr_list = [
     ("maxHp", "生命", "icon10.png"),
     ("maxES", "护盾", "icon11.png"),
     ("defense", "防御", "icon9.png"),
-    ("maxSp", "最大神志", "icon8.png"),
+    ("maxSp", "最大神智", "icon8.png"),
     ("skillIntensity", "技能威力", "icon7.png"),
     ("skillRange", "技能范围", "icon6.png"),
     ("skillSustain", "技能耐久", "icon5.png"),
@@ -251,8 +252,22 @@ async def draw_role_card(
             )
             return
 
+    # 属性表（标准行 + 隐藏属性行）先算 —— 行数决定面板高度，
+    # 且武器面板需要它的 bonus（角色侧「可穿透到武器」属性：暴击/暴伤/触发/攻速）
+    weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
+    weapon_categories = collect_weapon_categories(role_detail, weapon_details)
+    final_attr = compute_final_attribute(role_detail, con_weapon_detail, weapon_categories, weapon_details)
+
     # 伤害计算：纯本地（DOB 数据包技能字段 + dna-builder 结算口径），不再依赖官方 H5 接口
-    damage_section = draw_local_damage_section(role_detail, con_weapon_detail, close_weapon_detail, ranged_weapon_detail)
+    damage_section = draw_local_damage_section(
+        role_detail, con_weapon_detail, close_weapon_detail, ranged_weapon_detail
+    )
+    # inherit 型同律武器（圆舞/剑非剑/疑星落）按被继承的近战/远程武器出面板
+    con_inherit = (
+        resolve_inherit_source(con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
+        if con_weapon_detail is not None
+        else None
+    )
     weapon_sections: list[Image.Image] = []
     if con_weapon_detail is not None:
         weapon_sections.append(
@@ -260,6 +275,8 @@ async def draw_role_card(
                 con_weapon_detail,
                 "同律武器",
                 role_detail,
+                final_attr.bonus,
+                con_inherit,
             )
         )
 
@@ -269,6 +286,7 @@ async def draw_role_card(
                 close_weapon_detail,
                 "近战武器",
                 role_detail,
+                final_attr.bonus,
             )
         )
     if ranged_weapon_detail is not None:
@@ -277,6 +295,7 @@ async def draw_role_card(
                 ranged_weapon_detail,
                 "远程武器",
                 role_detail,
+                final_attr.bonus,
             )
         )
 
@@ -295,8 +314,6 @@ async def draw_role_card(
     )
     avatar_title = avatar_title.resize((1000, 1000 * avatar_title.height // avatar_title.width))
     weapon_sections_height = sum(section.height for section in weapon_sections)
-    # 属性表（标准行 + 隐藏属性行）提前算好，行数决定面板高度
-    final_attr = compute_final_attribute(role_detail, con_weapon_detail)
     total_attr_rows = len(attr_list) + len(final_attr.hidden_rows)
     # 立绘面板固定 850 高；属性表从 y=200 起、可能因行数变化超出，取二者较大值
     panel_h = max(850, 200 + 53 * total_attr_rows + 6 + 6)
@@ -389,10 +406,29 @@ async def draw_role_card(
     final_attr_map = dict(final_attr.rows)
     hidden_attr_rows = final_attr.hidden_rows
     attr_bg = Image.new("RGBA", (400, 53 * total_attr_rows + 6), (0, 0, 0, 128))
+    element_cn = _role_element_cn(role_detail)
+    attribute = role_detail.attribute
+    # 本地算不出时的官方裸值回退（「充盈威力」官方接口没有对应字段，留空）
+    official_values: dict[str, str] = {
+        "atk": str(attribute.atk),
+        "maxHp": str(attribute.maxHp),
+        "maxES": str(attribute.maxES),
+        "defense": str(attribute.defense),
+        "maxSp": str(attribute.maxSp),
+        "skillIntensity": attribute.skillIntensity,
+        "skillRange": attribute.skillRange,
+        "skillSustain": attribute.skillSustain,
+        "skillEfficiency": attribute.skillEfficiency,
+        "skillRecharge": "",
+        "strongValue": attribute.strongValue,
+        "enmityValue": attribute.enmityValue,
+    }
     for index, attrs in enumerate(attr_list):
         prop_info = prop_info_bar1.copy() if index % 2 == 0 else prop_info_bar2.copy()
         prop_info_draw = ImageDraw.Draw(prop_info)
-        attr_value = final_attr_map.get(attrs[1]) or f"{getattr(role_detail.attribute, attrs[0], None) or ''}"
+        # 「攻击」按角色自身属性显示为「X属性攻击」（与游戏面板一致）
+        label = f"{element_cn}属性攻击" if (attrs[0] == "atk" and element_cn) else attrs[1]
+        attr_value = final_attr_map.get(label) or official_values[attrs[0]]
 
         icon = Image.open(TEXT_PATH / f"icons/{attrs[2]}")
         # icon
@@ -400,7 +436,7 @@ async def draw_role_card(
         # 属性名
         prop_info_draw.text(
             (53, 25),
-            attrs[1],
+            label,
             COLOR_WHITE,
             font=dna_font_26,
             anchor="lm",
@@ -488,10 +524,8 @@ async def draw_role_card(
 
     # mod
     all_mod_bg = Image.new("RGBA", (1000, 500), (0, 0, 0, 0))
-    # 左4
-    # 槽位对应（编号同游戏内）：左组 左上1/右上2/左下5/右下6，右组 左上3/右上4/左下7/右下8，
-    # 接口 modes 下标按 dna-builder GAME_STYLE_MOD_SLOT_ORDER 映射：
-    # 槽1=m0, 槽2=m2, 槽3=m3, 槽4=m1, 槽5=m6, 槽6=m4, 槽7=m7, 槽8=m5
+    # 左4；槽位↔modes 下标按 dna-builder GAME_STYLE_MOD_SLOT_ORDER：
+    # 槽1=m0 槽2=m2 槽3=m3 槽4=m1 槽5=m6 槽6=m4 槽7=m7 槽8=m5
     left_list = [role_detail.modes[0], role_detail.modes[2], role_detail.modes[6], role_detail.modes[4]]
     for index, mod in enumerate(left_list):
         quality = mod.quality or 1
