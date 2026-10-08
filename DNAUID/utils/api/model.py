@@ -1,8 +1,14 @@
-from typing import Any, Literal
+from typing import Literal, TypeAlias
 
 from pydantic import Field, BaseModel, model_validator
 
 from ..constants.sign_bbs_mark import BBSMarkName
+
+# pydantic before-validator 的入参是任意 JSON：只有这几种形态，逐处 isinstance 收窄
+JsonValue: TypeAlias = "str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]"
+
+# DNARoleForToolInstanceInfo.mh_type 按实例下标取值
+_MH_TYPES = ("role", "weapon", "mzx")
 
 
 class UserGame(BaseModel):
@@ -169,21 +175,18 @@ class DNAMHRes(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def normalize_input(cls, values: Any):
-        # 兼容列表输入
-        if isinstance(values, list):
-            values = {"instanceInfo": values}
-
-        instanceInfo = values.get("instanceInfo", [])
-        for index, instance in enumerate(instanceInfo):
-            if index == 0:
-                instance["mh_type"] = "role"
-            elif index == 1:
-                instance["mh_type"] = "weapon"
-            elif index == 2:
-                instance["mh_type"] = "mzx"
-
-        return values
+    def normalize_input(
+        cls,
+        values: list[JsonValue] | dict[str, JsonValue],
+    ) -> dict[str, JsonValue]:
+        """兼容列表输入，并按实例下标补 mh_type"""
+        data: dict[str, JsonValue] = {"instanceInfo": values} if isinstance(values, list) else values
+        instance_info = data.get("instanceInfo")
+        if isinstance(instance_info, list):
+            for index, instance in enumerate(instance_info):
+                if index < len(_MH_TYPES) and isinstance(instance, dict):
+                    instance["mh_type"] = _MH_TYPES[index]
+        return data
 
 
 class RoleAttribute(BaseModel):
@@ -198,7 +201,7 @@ class RoleAttribute(BaseModel):
     maxHp: int = Field(description="最大生命值")
     atk: int = Field(description="攻击")
     maxES: int = Field(description="护盾")
-    maxSp: int = Field(description="最大神志")
+    maxSp: int = Field(description="最大神智")
 
 
 class RoleSkill(BaseModel):
@@ -255,8 +258,10 @@ class WeaponAttribute(BaseModel):
 class WeaponDetail(BaseModel):
     attribute: WeaponAttribute = Field(description="武器属性")
     currentVolume: int = Field(description="当前魔之楔")
-    elementIcon: str = Field(description="元素图标")
-    elementName: str = Field(description="元素名称")
+    # 官方接口对个别武器不返回这两个字段（实测 无声的嘶吼 / 10405），故设为可选；
+    # 消费方回退到数据包的武器类别（见 local_weapon_attribute）
+    elementIcon: str | None = Field(description="元素图标", default=None)
+    elementName: str | None = Field(description="元素名称", default=None)
     icon: str = Field(description="武器头像")
     id: int = Field(description="武器id")
     level: int = Field(description="武器等级")
@@ -326,9 +331,9 @@ class DNABBSTask(BaseModel):
     # 添加markName字段
     markName: str | None = Field(default=None, description="任务标识名")
 
-    def __init__(self, **data):
-        remark = data.get("remark", "")
-        data["markName"] = BBSMarkName.get_mark_name(remark)
+    def __init__(self, **data: JsonValue) -> None:
+        remark = data.get("remark")
+        data["markName"] = BBSMarkName.get_mark_name(remark if isinstance(remark, str) else "")
         super().__init__(**data)
 
 

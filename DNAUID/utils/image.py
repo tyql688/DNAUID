@@ -261,7 +261,7 @@ async def get_avatar_title_img(
         ev.at = None  # 清空 at，确保获取发送者自己的头像
     try:
         avatar = await get_event_avatar(ev, avatar_path=AVATAR_PATH)
-    except Exception:
+    except OSError:  # 头像文件缺失/损坏；网络类异常 get_event_avatar 内部已吞
         avatar = await get_avatar_img("5101")
     finally:
         ev.at = original_at  # 恢复原始值
@@ -338,6 +338,7 @@ def add_footer(
     w: int = 0,
     offset_y: int = 0,
     is_invert: bool = False,
+    source_line: str | None = None,
 ) -> Image.Image:
     footer = Image.open(TEXT_PATH / "footer.png")
     if is_invert:
@@ -352,19 +353,32 @@ def add_footer(
             (w, int(footer.size[1] * w / footer.size[0])),
         )
 
+    line_h = 22 if source_line else 0
     x, y = (
         int((img.size[0] - footer.size[0]) / 2),
-        img.size[1] - footer.size[1] - 20 + offset_y,
+        img.size[1] - footer.size[1] - 20 - line_h + offset_y,
     )
 
     img.paste(footer, (x, y), footer)
+    if source_line:
+        # 数据来源行（页脚下方预留的 line_h 条带内）：如 "Data Source: DNA Builder (DOB) | Pack Version: 1.6.208.4"
+        from .fonts.dna_fonts import dna_font_14
+
+        draw = ImageDraw.Draw(img)
+        draw.text(
+            (img.size[0] / 2, img.size[1] - 20 - line_h / 2),
+            source_line,
+            fill=(235, 235, 240, 210),
+            font=dna_font_14,
+            anchor="mm",
+        )
     return img
 
 
 class SmoothDrawer:
     """通用抗锯齿绘制工具"""
 
-    def __init__(self, scale: int = 4):
+    def __init__(self, scale: int = 4) -> None:
         self.scale: int = scale
 
     def rounded_rectangle(
@@ -460,6 +474,6 @@ def compress_to_webp(image_path: Path, quality: int = 90, delete_original: bool 
 
         return True, webp_path
 
-    except Exception as e:
-        logger.error(f"压缩图片为webp格式失败: {e}")
+    except (OSError, ValueError) as error:  # PIL/写盘失败（UnidentifiedImageError 是 OSError）
+        logger.error(f"压缩图片为webp格式失败: {error}")
         return False, image_path

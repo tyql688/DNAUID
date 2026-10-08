@@ -15,6 +15,7 @@ from .loadout import (
     WeaponSlotConflictError,
     resolve_weapon_loadout,
 )
+from ..dna_mod import dob_loader, ensure_data_ready
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_SALMON,
@@ -34,9 +35,14 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
+from .local_damage import draw_local_damage_section
 from ..utils.dna_api import dna_api
-from .damage_service import RoleDamageBuild, calculate_role_damage
-from .damage_renderer import draw_role_damage_section
+from .local_attribute import (
+    _role_element_cn,
+    compute_attr_context,
+    compute_final_attribute,
+    collect_weapon_categories,
+)
 from .weapon_renderer import draw_weapon_detail_section
 from ..utils.api.model import (
     WeaponDetail,
@@ -62,6 +68,7 @@ from ..utils.fonts.dna_fonts import (
     dna_font_26,
     dna_font_30,
 )
+from .local_weapon_attribute import resolve_inherit_source
 from ..utils.master_char_const import MASTER_CHAR_NAME_BY_ID, is_master_char_id
 
 TEXT_PATH = Path(__file__).parent / "texture2d"
@@ -76,14 +83,24 @@ attr_list = [
     ("maxHp", "生命", "icon10.png"),
     ("maxES", "护盾", "icon11.png"),
     ("defense", "防御", "icon9.png"),
-    ("maxSp", "最大神志", "icon8.png"),
+    ("maxSp", "最大神智", "icon8.png"),
     ("skillIntensity", "技能威力", "icon7.png"),
     ("skillRange", "技能范围", "icon6.png"),
     ("skillSustain", "技能耐久", "icon5.png"),
     ("skillEfficiency", "技能效益", "icon4.png"),
+    ("skillRecharge", "充盈威力", "icon18.png"),
     ("strongValue", "昂扬", "icon3.png"),
     ("enmityValue", "背水", "icon2.png"),
 ]
+
+# 隐藏属性行的图标（icon19~22 为按含义绘制的专属图标，风格与官方 icon 系列一致；
+# 未命中的键兜底 icon1。充盈威力在标准表 12 行里，用 attr_list 自带的 icon18）
+HIDDEN_ATTR_ICONS = {
+    "增伤": "icon19.png",
+    "技能伤害": "icon20.png",
+    "减伤": "icon21.png",
+    "有效生命": "icon22.png",
+}
 
 
 async def _load_weapon_detail(
@@ -240,20 +257,40 @@ async def draw_role_card(
             )
             return
 
-    damage_build = RoleDamageBuild(
-        role_detail=role_detail,
-        con_weapon_detail=con_weapon_detail,
-        close_weapon_detail=close_weapon_detail,
-        lang_range_weapon_detail=ranged_weapon_detail,
+    # DOB 数据是本地计算的唯一数据源：未就绪时在这里等初始化完成
+    # （on_core_start 是后台钩子，里面的等待挡不住命令），失败时明确提示
+    dob_error = await ensure_data_ready()
+    if dob_error is not None:
+        await send_dna_notify(bot, ev, dob_error)
+        return
+
+    # 属性表（标准行 + 隐藏属性行）先算 —— 行数决定面板高度，
+    # 且武器面板需要它的 bonus（角色侧「可穿透到武器」属性：暴击/暴伤/触发/攻速）。
+    # AttrContext 只算一次，属性表与伤害区块共用（不动点迭代不重复跑）。
+    weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
+    weapon_categories = collect_weapon_categories(role_detail, weapon_details)
+    ctx = compute_attr_context(role_detail, weapon_categories, weapon_details)
+    final_attr = compute_final_attribute(role_detail, weapon_categories, weapon_details, ctx)
+
+    # 伤害计算：纯本地（DOB 数据包技能字段 + dna-builder 结算口径），不再依赖官方 H5 接口
+    damage_section = draw_local_damage_section(
+        role_detail, con_weapon_detail, close_weapon_detail, ranged_weapon_detail, ctx
     )
-    damage_result = await calculate_role_damage(dna_user, damage_build)
-    damage_section = draw_role_damage_section(damage_build, damage_result)
+    # inherit 型同律武器（圆舞/剑非剑/疑星落）按被继承的近战/远程武器出面板
+    con_inherit = (
+        resolve_inherit_source(con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
+        if con_weapon_detail is not None
+        else None
+    )
     weapon_sections: list[Image.Image] = []
     if con_weapon_detail is not None:
         weapon_sections.append(
             await draw_weapon_detail_section(
                 con_weapon_detail,
                 "同律武器",
+                role_detail,
+                final_attr.bonus,
+                con_inherit,
             )
         )
 
@@ -262,6 +299,8 @@ async def draw_role_card(
             await draw_weapon_detail_section(
                 close_weapon_detail,
                 "近战武器",
+                role_detail,
+                final_attr.bonus,
             )
         )
     if ranged_weapon_detail is not None:
@@ -269,6 +308,8 @@ async def draw_role_card(
             await draw_weapon_detail_section(
                 ranged_weapon_detail,
                 "远程武器",
+                role_detail,
+                final_attr.bonus,
             )
         )
 
@@ -287,14 +328,18 @@ async def draw_role_card(
     )
     avatar_title = avatar_title.resize((1000, 1000 * avatar_title.height // avatar_title.width))
     weapon_sections_height = sum(section.height for section in weapon_sections)
+    total_attr_rows = len(attr_list) + len(final_attr.hidden_rows)
+    # 立绘面板固定 850 高；属性表从 y=200 起、可能因行数变化超出，取二者较大值
+    panel_h = max(850, 200 + 53 * total_attr_rows + 6 + 6)
+    # 伤害区块高度（伤害失败时省略）
+    damage_h = damage_section.height + 40 if damage_section is not None else 0
     total_h = (
-        850
+        panel_h
         + div_img.height
         + global_skill_bg.height
         + weapon_sections_height
         + div_img.height
-        + damage_section.height
-        + 40
+        + damage_h
         + avatar_title.height
         + 600
     )
@@ -302,6 +347,9 @@ async def draw_role_card(
 
     original_img_path: Path | None = None
     role_panel = get_role_panel_img(char_id)
+    # 立绘整体下移：保持 850 原尺寸不拉伸，底边对齐属性表末行（分隔线）；
+    # 词条不足 12 行时偏移为 0，与原版完全一致
+    paint_offset = max(0, panel_h - 850)
     if role_panel is not None:
         original_img_path, role_panel_img = role_panel
         panel_size = (1000, 850)
@@ -321,11 +369,11 @@ async def draw_role_card(
         panel_bottom_fade = ImageOps.invert(Image.linear_gradient("L")).resize((panel_size[0], panel_fade))
         panel_mask.paste(panel_bottom_fade, (0, panel_size[1] - panel_fade))
         panel_img = Image.composite(panel_img, Image.new("RGBA", panel_size), panel_mask)
-        card.alpha_composite(panel_img, (0, 0))
+        card.alpha_composite(panel_img, (0, paint_offset))
     else:
         paint_img = await get_paint_img(char_id, role_detail.paint)
         paint_img = paint_img.resize((int(1320 * 0.8), int(1320 * 0.8)))
-        card.alpha_composite(paint_img, (-280, -100))
+        card.alpha_composite(paint_img, (-280, -100 + paint_offset))
 
     # 个人信息
     info_bg = Image.new("RGBA", (400, 200), (0, 0, 0, 0))
@@ -365,14 +413,36 @@ async def draw_role_card(
         grade_unlock_bg.alpha_composite(grade_bg, (100 + (i - 1) * grade_step, 0))
 
     grade_unlock_bg = grade_unlock_bg.resize((int(1000 * 0.5), int(130 * 0.5)))
-    card.alpha_composite(grade_unlock_bg, (0, 750))
+    # 命座行叠在立绘上，随立绘整体下移，保持相对位置
+    card.alpha_composite(grade_unlock_bg, (0, 750 + paint_offset))
 
-    # 属性
-    attr_bg = Image.new("RGBA", (400, 583), (0, 0, 0, 128))
+    # 属性（本地计算：角色基础(按等级) + 魔之楔 + 角色加成 → 最终值；隐藏属性行在标准行之后）
+    final_attr_map = dict(final_attr.rows)
+    hidden_attr_rows = final_attr.hidden_rows
+    attr_bg = Image.new("RGBA", (400, 53 * total_attr_rows + 6), (0, 0, 0, 128))
+    element_cn = _role_element_cn(role_detail)
+    attribute = role_detail.attribute
+    # 本地算不出时的官方裸值回退（「充盈威力」官方接口没有对应字段，留空）
+    official_values: dict[str, str] = {
+        "atk": str(attribute.atk),
+        "maxHp": str(attribute.maxHp),
+        "maxES": str(attribute.maxES),
+        "defense": str(attribute.defense),
+        "maxSp": str(attribute.maxSp),
+        "skillIntensity": attribute.skillIntensity,
+        "skillRange": attribute.skillRange,
+        "skillSustain": attribute.skillSustain,
+        "skillEfficiency": attribute.skillEfficiency,
+        "skillRecharge": "",
+        "strongValue": attribute.strongValue,
+        "enmityValue": attribute.enmityValue,
+    }
     for index, attrs in enumerate(attr_list):
         prop_info = prop_info_bar1.copy() if index % 2 == 0 else prop_info_bar2.copy()
         prop_info_draw = ImageDraw.Draw(prop_info)
-        attr_value = f"{getattr(role_detail.attribute, attrs[0]) or ''}"
+        # 「攻击」按角色自身属性显示为「X属性攻击」（与游戏面板一致）
+        label = f"{element_cn}属性攻击" if (attrs[0] == "atk" and element_cn) else attrs[1]
+        attr_value = final_attr_map.get(label) or official_values[attrs[0]]
 
         icon = Image.open(TEXT_PATH / f"icons/{attrs[2]}")
         # icon
@@ -380,7 +450,7 @@ async def draw_role_card(
         # 属性名
         prop_info_draw.text(
             (53, 25),
-            attrs[1],
+            label,
             COLOR_WHITE,
             font=dna_font_26,
             anchor="lm",
@@ -395,9 +465,34 @@ async def draw_role_card(
         )
         attr_bg.alpha_composite(prop_info, (0, index * 53))
 
+    # 隐藏属性行：样式与标准行一致，icon 复用相近的现成图标（HIDDEN_ATTR_ICONS）
+    for offset, (hidden_name, hidden_value) in enumerate(hidden_attr_rows):
+        index = len(attr_list) + offset
+        prop_info = prop_info_bar1.copy() if index % 2 == 0 else prop_info_bar2.copy()
+        prop_info_draw = ImageDraw.Draw(prop_info)
+        prop_info.alpha_composite(
+            Image.open(TEXT_PATH / "icons" / HIDDEN_ATTR_ICONS.get(hidden_name, "icon1.png")), (0, 0)
+        )
+        prop_info_draw.text(
+            (53, 25),
+            hidden_name,
+            COLOR_WHITE,
+            font=dna_font_26,
+            anchor="lm",
+        )
+        prop_info_draw.text(
+            (370, 25),
+            (hidden_value if "%" in hidden_value or not hidden_value.isdigit() else f"{int(hidden_value):,}"),
+            COLOR_WHITE,
+            font=dna_font_26,
+            anchor="rm",
+        )
+        attr_bg.alpha_composite(prop_info, (0, index * 53))
+
     card.alpha_composite(attr_bg, (550, 200))
 
-    h_index = 850
+    # 分隔线：属性表（标准行 + 隐藏属性行），压在立绘面板(高 850)底边之后再留 6px 余量
+    h_index = max(850, 200 + attr_bg.height + 6)
     card.alpha_composite(div_img, (0, h_index))
     h_index += div_img.height
 
@@ -443,8 +538,9 @@ async def draw_role_card(
 
     # mod
     all_mod_bg = Image.new("RGBA", (1000, 500), (0, 0, 0, 0))
-    # 左4
-    left_list = [role_detail.modes[0], role_detail.modes[2], role_detail.modes[4], role_detail.modes[6]]
+    # 左4；槽位↔modes 下标按 dna-builder GAME_STYLE_MOD_SLOT_ORDER：
+    # 槽1=m0 槽2=m2 槽3=m3 槽4=m1 槽5=m6 槽6=m4 槽7=m7 槽8=m5
+    left_list = [role_detail.modes[0], role_detail.modes[2], role_detail.modes[6], role_detail.modes[4]]
     for index, mod in enumerate(left_list):
         quality = mod.quality or 1
         mod_bg = Image.open(TEXT_PATH / f"mod/mod_left_{quality}.png")
@@ -470,7 +566,7 @@ async def draw_role_card(
         all_mod_bg.alpha_composite(mod_bg, (30 + (index % 2) * 180, (index // 2) * 250))
 
     # 右4
-    right_list = [role_detail.modes[1], role_detail.modes[3], role_detail.modes[7], role_detail.modes[5]]
+    right_list = [role_detail.modes[3], role_detail.modes[1], role_detail.modes[7], role_detail.modes[5]]
     for index, mod in enumerate(right_list):
         quality = mod.quality or 1
         mod_bg = Image.open(TEXT_PATH / f"mod/mod_right_{quality}.png")
@@ -520,13 +616,21 @@ async def draw_role_card(
     card.alpha_composite(all_mod_bg, (0, h_index))
     h_index += 500
 
-    card.alpha_composite(damage_section, (50, h_index + 20))
-    h_index += damage_section.height + 40
+    # 伤害计算（仅成功时绘制）
+    if damage_section is not None:
+        card.alpha_composite(damage_section, (50, h_index + 20))
+        h_index += damage_section.height + 40
 
     # 头像等（已在前面生成并用于计算总高度）
     card.alpha_composite(avatar_title, (0, h_index))
 
-    card = add_footer(card, 600)
+    # 页脚：数据来源 + 数据包版本（数据未就绪时不加来源行）
+    dob_version = dob_loader.version()
+    card = add_footer(
+        card,
+        600,
+        source_line=f"Data Source: DNA Builder (DOB) | Pack Version: {dob_version}" if dob_version else None,
+    )
     card = await convert_img(card)
     message_ids = await bot.send(card, wait_recall=True)
     logger.debug(f"[DNA Detail] role panel message_ids={message_ids}")

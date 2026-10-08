@@ -20,6 +20,8 @@ RESOURCE_PATH = MAIN_PATH / "resource"
 AVATAR_PATH = RESOURCE_PATH / "avatar"  # 头像
 WEAPON_PATH = RESOURCE_PATH / "weapon"  # 武器
 PAINT_PATH = RESOURCE_PATH / "paint"  # 立绘
+DOB_PATH = RESOURCE_PATH / "dob"  # DOB 数据包转换产物（dna-builder 数据源）
+DOB_DATA_PATH = DOB_PATH / "dob_data.json"
 SKILL_PATH = RESOURCE_PATH / "skill"  # 技能
 ATTR_PATH = RESOURCE_PATH / "attr"  # 属性
 MOD_PATH = RESOURCE_PATH / "mod"  # mod
@@ -42,7 +44,7 @@ ANN_CARD_PATH = OTHER_PATH / "ann_card"
 CALENDAR_PATH = OTHER_PATH / "calendar"
 
 
-def init_dir():
+def init_dir() -> None:
     for i in [
         MAIN_PATH,
         SIGN_PATH,

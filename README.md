@@ -27,6 +27,14 @@
 >
 > ✨ 如果需要添加其他二重螺旋相关功能欢迎在 issues 中提出 ✨
 
+## 丨数据来源
+
+角色/武器面板与本地伤害计算的数据来自 **[DNA Builder（dna-builder）](https://github.com/pa001024/dna-builder)** 的公开数据包（MIT License），在此感谢作者 pa001024。
+
+- 插件启动时自动检查数据包更新（可在配置中关闭），此后每 24 小时复查一次
+- 也可手动更新：发送 `dna更新数据包`，查看版本：`数据包状态`
+- 面板图页脚会显示当前数据包版本
+
 ## 丨其他
 
 - 本项目仅供学习使用，请勿用于商业用途
@@ -35,6 +43,7 @@
 ## 致谢
 
 - [Wuyi 无疑](https://github.com/KimigaiiWuyi)
+- [DNA Builder（dna-builder）](https://github.com/pa001024/dna-builder) — 面板数据包与计算口径
 
 ## 攻略组
 
