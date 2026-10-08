@@ -288,12 +288,26 @@ wheels = [
 ]
 
 [[package]]
+name = "dna-builder-sdk"
+version = "0.1.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "msgpack" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/f7/0a/786c00acc931ac2db2f63132f576179277955a7c9c109dcb2899b8aa1e65/dna_builder_sdk-0.1.1.tar.gz", hash = "sha256:8db29e0bd1405c76d85dff54b0e5ebf035f23dce8efa38599081e4149def0b81", size = 87510, upload-time = "2026-10-08T18:38:27.093Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/74/3e/97ada6a8512f6de5d4d3d8f31251e7f3c5cdbf80f1f05ba857f1971eb818/dna_builder_sdk-0.1.1-py3-none-any.whl", hash = "sha256:d0b497efa0c973ab41da9d29af96a2ecff34159e8fa6d0a029020215cb8da012", size = 78820, upload-time = "2026-10-08T18:38:25.708Z" },
+]
+
+[[package]]
 name = "dnauid"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "dna-builder-sdk" },
     { name = "msgpack" },
     { name = "pycryptodome" },
+    { name = "pydantic" },
     { name = "websocket-client" },
 ]
 
@@ -326,8 +340,10 @@ e2e = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dna-builder-sdk", specifier = ">=0.1.1" },
     { name = "msgpack", specifier = ">=1.0.0" },
     { name = "pycryptodome", specifier = ">=3.23.0" },
+    { name = "pydantic", specifier = ">=2.0" },
     { name = "websocket-client", specifier = ">=1.9.0" },
 ]
 

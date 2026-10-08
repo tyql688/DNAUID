@@ -33,7 +33,9 @@ requires-python = ">=3.11, <4.0"
 dependencies = [
     "pycryptodome>=3.23.0",
     "msgpack>=1.0.0",
+    "dna-builder-sdk>=0.1.1",
     "websocket-client>=1.9.0",
+    "pydantic>=2.0",
 ]
 name = "DNAUID"
 version = "1.0.0"

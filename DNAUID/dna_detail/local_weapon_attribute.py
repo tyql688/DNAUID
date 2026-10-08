@@ -1,55 +1,46 @@
-"""武器（同律/近战/远程）属性面板计算 —— 全本地，不依赖官方计算接口
+"""武器（同律/近战/远程）属性面板 —— dobsdk 引擎面板 + DNAUID 显示行组装。
 
-口径（移植自 dna-builder）：
-
-1. **攻击行**：数据包武器的 ``攻击`` 为 1 级白值，
-   ``基础攻击 = 白值 × CommonLevelUp[等级-1]``（同律武器取角色数据包中的
-   同律武器条目）；武器不在数据包内时显示「无法计算」。
-   显示名按武器「伤害类型」渲染（贯穿攻击 / 切割攻击 / 震荡攻击 / 灾厄攻击），
-   继承型同律武器没有自己的伤害类型，回退为「攻击」。
-2. **副属性（暴击率/暴击伤害/攻击速度/触发概率）**：与武器等级无关，
-   ``基础值 × (1 + Σ mod加成%)``。
-3. **魔之楔加成**：``dob_loader.get_weapon_mod_attrs``（键已映射为面板显示名：
-   攻击 / 暴击率 / 暴击伤害 / 攻击速度 / 触发概率，值为百分比）。
-4. **灾厄熔炼潜能**：武器自身「加成」按精炼缩放后计入，但**仅在角色精通该武器
-   类别时生效**（dna-builder ``CharBuild.isWeaponForgeEffective``）。
-
-已验证（莉兹贝尔 · 萨麦尔 lv80 · 4 mod 金+10，DNAUID 历史记录口径）：
-- 暴击率   20% × (1+100%) =  40%   ✓
-- 暴击伤害 200% × (1+100%) = 400%   ✓
-- 攻击速度 1.0 × (1+50%)  = 1.5    ✓
-- 触发概率  25% × (1+0)   =  25%   ✓
+口径以 dna-builder TS 为准：面板数值全部取引擎 ``weapon_panel``（数据包基值，
+含精通/锻造/各类加成）；显示名按武器「伤害类型」渲染；数据包未收录显示「无法计算」。
 """
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from dataclasses import field, dataclass
 
-from ..dna_mod import dob_loader
-from ..utils.api.model import Mode, RoleDetail, WeaponDetail
-from ..dna_mod.dob_types import WeaponRecord
+from ..dna_sdk import tables
+from ..dna_sdk.build import SdkBuild
 
 if TYPE_CHECKING:
-    from .local_attribute import AttributeBonus
+    from ..utils.api.model import RoleDetail, WeaponDetail
+
+__all__ = [
+    "WeaponPanel",
+    "WeaponAttributeRows",
+    "con_weapon_panel",
+    "resolve_inherit_source",
+    "resolve_weapon_record",
+    "slot_damage_bonus",
+    "weapon_panel_for",
+    "compute_weapon_attribute",
+]
 
 
 def resolve_weapon_record(
     weapon_detail: WeaponDetail,
     role_detail: RoleDetail,
-) -> tuple[WeaponRecord | None, bool]:
-    """按**请求 id** 取数据包记录，返回 (记录, 是否同律武器)
+) -> tuple[dict | None, bool]:
+    """按请求 id 取数据包记录，返回 (记录, 是否同律武器)。
 
     先查普通武器表；查不到时，只有请求 id 恰好等于角色的同律武器 id 才去查
-    角色数据包的同律武器条目 —— 不允许拿角色的同律武器顶替另一把查不到的武器
-    （否则数据包未收录的普通武器会被算成同律武器的面板与伤害）。
+    角色的同律武器条目 —— 不允许拿角色的同律武器顶替另一把查不到的武器。
     """
-    weapon = dob_loader.get_weapon(weapon_detail.id)
+    weapon = tables.weapon_record(weapon_detail.id)
     if weapon is not None:
         return weapon, False
     con_id = role_detail.conWeaponId
     if con_id is not None and str(weapon_detail.id) == str(con_id):
-        con = dob_loader.get_con_weapon(role_detail.charId, con_id)
+        con = tables.con_weapon_record(role_detail.charId, con_id)
         if con is not None:
             return con, True
     return None, False
@@ -61,11 +52,7 @@ def resolve_inherit_source(
     close_weapon_detail: WeaponDetail | None = None,
     ranged_weapon_detail: WeaponDetail | None = None,
 ) -> WeaponDetail | None:
-    """inherit 型同律武器 → 被继承的已装备武器（近战/远程）；非继承返回 None
-
-    dna-builder ``calculateWeaponAttributes`` 对 inherit 武器直接把 weapon 换成
-    被继承的那把，面板与伤害全部按被继承武器算（伤害类型也同步过去）。
-    """
+    """inherit 型同律武器 → 被继承的已装备武器（近战/远程）；非继承返回 None。"""
     record, _is_skill = resolve_weapon_record(weapon_detail, role_detail)
     inherit = record.get("inherit") if record else None
     if inherit == "melee":
@@ -75,130 +62,9 @@ def resolve_inherit_source(
     return None
 
 
-def resolve_weapon_level(weapon_detail: WeaponDetail, role_detail: RoleDetail, is_skill_weapon: bool) -> int | None:
-    """武器成长等级：同律武器绑定角色取角色等级；普通武器取武器自身等级"""
-    if is_skill_weapon:
-        return role_detail.level or weapon_detail.level
-    return weapon_detail.level
-
-
-def resolve_weapon_base_attack(weapon_detail: WeaponDetail, role_detail: RoleDetail) -> float | None:
-    """按等级解析武器基础攻击（1 级白值 × 等级倍率）
-
-    数据包未收录（数据不足）返回 None，由调用方显示「无法计算」。
-    """
-    weapon, is_skill = resolve_weapon_record(weapon_detail, role_detail)
-    multiplier = dob_loader.level_multiplier(resolve_weapon_level(weapon_detail, role_detail, is_skill))
-    if multiplier is None:
-        return None
-    if weapon is None:
-        return None
-    attack = weapon.get("攻击")
-    if attack is None:
-        return None
-    return round(attack * multiplier, 2)
-
-
-def resolve_weapon_mastery_ratio(weapon_detail: WeaponDetail, role_detail: RoleDetail) -> float:
-    """武器攻击的精通倍率（命中 1.2 / 未命中 1.0；同律武器必然命中）"""
-    weapon, _ = resolve_weapon_record(weapon_detail, role_detail)
-    return dob_loader.weapon_mastery_ratio(role_detail.charId, weapon)
-
-
-@dataclass(slots=True)
-class WeaponBonus:
-    """武器魔之楔汇总加成（百分比）"""
-
-    atk: float = 0.0
-    physical: float = 0.0  # 物理（攻击的独立乘区，dna-builder attack *= 1 + physicalBonus）
-    cri: float = 0.0  # 暴击率
-    crd: float = 0.0  # 暴击伤害
-    speed: float = 0.0  # 攻击速度
-    trigger: float = 0.0  # 触发概率
-    missing: list[int] = field(default_factory=list)
-
-
-def collect_weapon_bonus(modes: list[Mode]) -> WeaponBonus:
-    """汇总武器所有魔之楔的加成（每个 mod 按其等级取 DOB 数据线性缩放值）"""
-    bonus = WeaponBonus()
-    for mode in modes:
-        if mode.id is None or mode.id <= 0:
-            continue
-        if not dob_loader.get_by_third_id(mode.id):
-            bonus.missing.append(mode.id)
-            continue
-        attrs = dob_loader.get_weapon_mod_attrs(mode.id, mode.level, mode.quality)
-        if not attrs:
-            continue
-        bonus.atk += attrs.get("攻击", 0.0)
-        bonus.physical += attrs.get("物理", 0.0)
-        bonus.cri += attrs.get("暴击率", 0.0)
-        bonus.crd += attrs.get("暴击伤害", 0.0)
-        bonus.speed += attrs.get("攻击速度", 0.0)
-        bonus.trigger += attrs.get("触发概率", 0.0)
-    return bonus
-
-
-# 可从角色侧「穿透」到武器面板的属性（dna-builder CharBuild.attrAllowCharToWeapon）
-# 常量集中在 dob_loader，供 collect_weapon_forge_bonus 过滤武器自身加成时共用
-_CHAR_TO_WEAPON_KEYS = dob_loader.WEAPON_SCOPE_KEYS
-
-# 攻速加成上限（百分比）：dna-builder ``CharBuild.ts:1624``
-# ``attackSpeedBonus = Math.min(attackSpeedBonus, 2)`` —— 2 即 +200%
-_ATK_SPEED_BONUS_CAP = 200.0
-
-
-@dataclass(slots=True)
-class WeaponScopeBonus:
-    """角色侧对武器面板的加成（百分比）：角色自带加成 + 角色槽魔之楔"""
-
-    cri: float = 0.0  # 暴击率
-    crd: float = 0.0  # 暴击伤害
-    trigger: float = 0.0  # 触发概率
-    speed: float = 0.0  # 攻击速度
-
-
-def collect_char_weapon_scope_bonus(
-    role_detail: RoleDetail,
-    bonus: AttributeBonus | None = None,
-) -> WeaponScopeBonus:
-    """取角色侧「可穿透到武器」的属性（暴击/暴伤/触发/攻速）
-
-    dna-builder 的 ``getTotalBonus(键, 武器作用域)`` 会同时计入
-    ``table.char``（角色加成，如 芙罗拉/刻舟被动 +50% 暴击）与 ``table.modsChar``
-    （角色槽 MOD，**含条件生效块**，如 56163「专注」技能耐久≥2 → 暴击+99%）
-    —— 白名单见 ``CharBuild.attrAllowCharToWeapon``。
-    这些属性**不显示在角色面板**，只作用于武器面板与伤害结算。
-
-    ``bonus`` 传已算好的角色加成汇总（``AttributeBonus``）时直接取用 ——
-    它已含「角色自带加成 + 角色槽 MOD + 条件生效块」，是最完整的口径；
-    不传则内部现算一次（多一轮不动点迭代，调用方持有 ctx 时建议传入）。
-    """
-    if bonus is None:
-        from .local_attribute import collect_attribute_bonus
-
-        bonus = collect_attribute_bonus(role_detail)
-
-    out = WeaponScopeBonus()
-    for zone in (bonus.extra, bonus.rate, bonus.main):
-        for key, value in zone.items():
-            if key not in _CHAR_TO_WEAPON_KEYS:
-                continue
-            amount = float(value)
-            if key == "暴击":
-                out.cri += amount
-            elif key == "暴伤":
-                out.crd += amount
-            elif key == "触发":
-                out.trigger += amount
-            elif key == "攻速":
-                out.speed += amount
-    return out
-
-
 @dataclass(slots=True)
 class WeaponPanel:
-    """武器最终面板数值（原始口径：攻击为绝对值，暴击/暴伤/触发为小数、攻速为倍率）"""
+    """武器最终面板数值（原始口径：攻击绝对值，暴击/暴伤/触发小数，攻速倍率）。"""
 
     attack: float | None
     cri: float
@@ -207,70 +73,170 @@ class WeaponPanel:
     trigger: float
 
 
-def _is_forge_effective(role_detail: RoleDetail, record: WeaponRecord | None) -> bool:
-    """灾厄熔炼潜能是否在当前角色精通下生效（dna-builder CharBuild.isWeaponForgeEffective）
+def _panel_of(raw: dict | None) -> WeaponPanel | None:
+    if not raw:
+        return None
+    attack = raw.get("攻击")
+    return WeaponPanel(
+        attack=float(attack) if isinstance(attack, (int, float)) else None,
+        cri=float(raw.get("暴击") or 0.0),
+        crd=float(raw.get("暴伤") or 0.0),
+        speed=float(raw.get("攻速") or 0.0),
+        trigger=float(raw.get("触发") or 0.0),
+    )
 
-    无熔炉的武器恒生效；带熔炉（灾厄武器潜能）的必须角色精通该武器类别。
-    """
-    if record is None or not record.get("hasForge"):
+
+def weapon_panel_for(build: SdkBuild, slot: str) -> WeaponPanel | None:
+    """主装配的近战/远程武器面板（slot: close/ranged）。"""
+    kind = {"close": "melee", "ranged": "ranged"}.get(slot, slot)
+    try:
+        return _panel_of(build.engine.weapon_panel(kind))
+    except (KeyError, ValueError):
+        return None
+
+
+def _char_scope(build: SdkBuild) -> dict[str, float]:
+    """角色侧穿透到武器面板的属性（暴击/暴伤/触发/攻速，百分比，与旧口径一致）。"""
+    attrs = build.engine.calculate_attributes()
+    out: dict[str, float] = {}
+    for key in ("暴击", "暴伤", "触发", "攻速"):
+        value = attrs.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[key] = float(value) * 100
+    return out
+
+
+def _con_mod_bonus_fractions(con_detail: WeaponDetail) -> dict[str, float]:
+    """同律槽 mod 加成（小数，数据包键；引擎结算值）。"""
+    out: dict[str, float] = {}
+    for mode in con_detail.modes or []:
+        if mode is None or mode.id is None or mode.id <= 0:
+            continue
+        attrs = tables.leveled_mod_attrs(mode.id, mode.level)
+        if not attrs:
+            continue
+        for key, fraction in attrs.items():
+            out[key] = out.get(key, 0.0) + fraction
+    return out
+
+
+def _con_mod_bonus(con_detail: WeaponDetail) -> dict[str, float]:
+    """同律槽 mod 加成（百分比，键为武器面板显示名）。"""
+    out: dict[str, float] = {}
+    for key, fraction in _con_mod_bonus_fractions(con_detail).items():
+        display = tables.WEAPON_ATTR_MAP.get(key)
+        if display:
+            out[display] = out.get(display, 0.0) + fraction * 100
+    return out
+
+
+def _forge_effective(role: RoleDetail, record: dict | None) -> bool:
+    """熔炼潜能是否生效：无熔炉恒生效，否则按角色精通判定（同律绑定角色必然命中）。"""
+    if record is None or not record.get("熔炉"):
         return True
-    return dob_loader.is_weapon_mastered(role_detail.charId, record)
+    return tables.is_weapon_mastered(role.charId, record)
 
 
-def resolve_weapon_panel(
-    weapon_detail: WeaponDetail,
-    role_detail: RoleDetail,
-    bonus: AttributeBonus | None = None,
-    inherit_from: WeaponDetail | None = None,
-) -> WeaponPanel:
-    """武器最终面板：基础值 × (1 + 角色侧 + 武器自身加成 + 该武器槽 mod)
+def _con_base_attack(record: dict, role: RoleDetail) -> float | None:
+    """同律武器基础攻击（1 级白值 × 角色等级倍率；同律绑定角色等级）。"""
+    attack = record.get("攻击")
+    if attack is None:
+        return None
+    multiplier = tables.level_multiplier(role.level or 80)
+    if multiplier is None:
+        return None
+    return round(float(attack) * multiplier, 2)
 
-    dna-builder ``CharBuild.calculateWeaponAttributes`` 同口径 —— 暴击/暴伤/触发/攻速
-    四个属性会吃到「角色自带加成（如被动技能）+ 角色槽 MOD + 武器自身加成 + 该武器槽 MOD」；
-    攻击只吃「武器自身加成 + 该武器槽 MOD」（不吃角色侧），再乘一个独立的「物理」乘区。
 
-    ``inherit_from`` 传 inherit 型同律武器所继承的那把武器时，整份面板按被继承武器算。
+def con_weapon_panel(build: SdkBuild, con_detail: WeaponDetail) -> WeaponPanel | None:
+    """同律武器面板（SDK 无 con 槽概念，按 TS 公式就地结算，全数据包基值）。
+
+    基础值 × (1 + 角色侧 + 同律槽 mod + 自身锻造)；攻击另 × 精通倍率
+    （同律 1.4，TS 口径）。
     """
-    if inherit_from is not None:
-        weapon_detail = inherit_from
-    base = weapon_detail.attribute
-    mod_bonus = collect_weapon_bonus(weapon_detail.modes)
-    scope = collect_char_weapon_scope_bonus(role_detail, bonus)
-    record, _is_skill = resolve_weapon_record(weapon_detail, role_detail)
-    # 灾厄熔炼潜能只在角色精通该武器类别时生效（dna-builder isWeaponForgeEffective）；
-    # 与角色面板的 collect_weapon_forge_bonus 同一判定
+    role = build.role
+    record, _is_skill = resolve_weapon_record(con_detail, role)
+    if record is None:
+        return None
+    scope = _char_scope(build)
+    mod_bonus = _con_mod_bonus(con_detail)
     forge = (
-        dob_loader.weapon_forge_bonus(record, weapon_detail.skillLevel)
-        if _is_forge_effective(role_detail, record)
+        tables.weapon_forge_bonus(record, con_detail.skillLevel)
+        if _forge_effective(role, record)
         else {}
     )
 
-    cri_bonus = mod_bonus.cri + scope.cri + float(forge.get("暴击", 0.0)) * 100
-    crd_bonus = mod_bonus.crd + scope.crd + float(forge.get("暴伤", 0.0)) * 100
-    # 攻速加成有 +200% 上限（dna-builder CharBuild.ts:1624），其余三项无上限
-    speed_bonus = min(
-        mod_bonus.speed + scope.speed + float(forge.get("攻速", 0.0)) * 100,
-        _ATK_SPEED_BONUS_CAP,
+    cri_bonus = (
+        mod_bonus.get("暴击率", 0.0) + scope.get("暴击", 0.0)
+        + float(forge.get("暴击", 0.0)) * 100
     )
-    trigger_bonus = mod_bonus.trigger + scope.trigger + float(forge.get("触发", 0.0)) * 100
+    crd_bonus = (
+        mod_bonus.get("暴击伤害", 0.0) + scope.get("暴伤", 0.0)
+        + float(forge.get("暴伤", 0.0)) * 100
+    )
+    speed_bonus = min(
+        mod_bonus.get("攻击速度", 0.0) + scope.get("攻速", 0.0)
+        + float(forge.get("攻速", 0.0)) * 100,
+        200.0,
+    )
+    trigger_bonus = (
+        mod_bonus.get("触发概率", 0.0) + scope.get("触发", 0.0)
+        + float(forge.get("触发", 0.0)) * 100
+    )
+    physical_bonus = mod_bonus.get("物理", 0.0) + float(forge.get("物理", 0.0)) * 100
+    atk_bonus = mod_bonus.get("攻击", 0.0)
 
-    # 物理是与「攻击加成」并列的独立乘区（dna-builder: attack *= 1 + physicalBonus）
-    physical_bonus = mod_bonus.physical + float(forge.get("物理", 0.0)) * 100
-    base_atk = resolve_weapon_base_attack(weapon_detail, role_detail)
-    mastery_ratio = resolve_weapon_mastery_ratio(weapon_detail, role_detail)
+    base_atk = _con_base_attack(record, role)
     if base_atk is None:
         attack = None
     else:
-        attack = base_atk * (1 + mod_bonus.atk / 100) * (1 + physical_bonus / 100) * mastery_ratio
+        attack = base_atk * (1 + atk_bonus / 100) * (1 + physical_bonus / 100) * 1.4
         attack = round(attack, 2)
+    official = con_detail.attribute
+
+    def _base(raw_key: str, official_value: float | None) -> float:
+        raw_value = record.get(raw_key)
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            return float(raw_value)
+        if isinstance(official_value, (int, float)):
+            return float(official_value)
+        return 0.0
 
     return WeaponPanel(
         attack=attack,
-        cri=float(base.cri) * (1 + cri_bonus / 100),
-        crd=float(base.crd) * (1 + crd_bonus / 100),
-        speed=float(base.speed) * (1 + speed_bonus / 100),
-        trigger=float(base.trigger) * (1 + trigger_bonus / 100),
+        cri=_base("暴击", official.cri) * (1 + cri_bonus / 100),
+        crd=_base("暴伤", official.crd) * (1 + crd_bonus / 100),
+        speed=_base("攻速", official.speed) * (1 + speed_bonus / 100),
+        trigger=_base("触发", official.trigger) * (1 + trigger_bonus / 100),
     )
+
+
+_DAMAGE_BONUS_KEYS = (
+    "增伤",
+    "元素增伤",
+    "物理增伤",
+    "武器伤害",
+    "独立增伤",
+    "追加伤害",
+    "触发倍率",
+)
+
+
+def slot_damage_bonus(build: SdkBuild, slot: str) -> dict[str, float]:
+    """某武器槽 mod 的伤害相关加成（小数，多来源相加；引擎结算值）。"""
+    key = {"close": "meleeMods", "ranged": "rangedMods"}.get(slot)
+    out: dict[str, float] = {name: 0.0 for name in _DAMAGE_BONUS_KEYS}
+    if key is None:
+        return out
+    state = build.engine.s if hasattr(build.engine, "s") else {}
+    for mod in state.get(key) or []:
+        if not mod:
+            continue
+        for name in _DAMAGE_BONUS_KEYS:
+            value = mod.get(name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                out[name] += float(value)
+    return out
 
 
 @dataclass(slots=True)
@@ -278,7 +244,6 @@ class WeaponAttributeRows:
     """武器属性面板的 (显示名, 显示值) 列表"""
 
     rows: list[tuple[str, str]]
-    # 震荡攻击最终值（原始数值）；数据不足无法计算时为 None
     final_atk: float | None = None
 
 
@@ -290,65 +255,52 @@ def _fmt_pct(value: float) -> str:
 
 def _fmt_speed(value: float) -> str:
     if abs(value - round(value, 1)) < 1e-6:
-        # 1.0 → "1"，1.5 → "1.5"
         return f"{value:g}"
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
 def compute_weapon_attribute(
+    build: SdkBuild,
     weapon_detail: WeaponDetail,
-    role_detail: RoleDetail,
-    bonus: AttributeBonus | None = None,
-    inherit_from: WeaponDetail | None = None,
+    slot: str,
+    inherit_slot: str | None = None,
 ) -> WeaponAttributeRows:
-    """计算武器属性面板（武器类型 / 震荡攻击 / 暴击率 / 暴击伤害 / 攻击速度 / 触发概率）
+    """计算武器属性面板（武器类型 / 伤害攻击 / 暴击率 / 暴击伤害 / 攻击速度 / 触发概率）。
 
-    - 副属性：本地算
-    - 震荡攻击：本地按等级成长 + 魔之楔加成；数据不足时显示「无法计算」
+    slot: close/ranged/con。inherit_slot 非空时整份面板按被继承武器算
+    （攻击行标签取被继承武器的伤害类型，武器类型仍取自己的）。
+    数据不足（未收录）时攻击显示「无法计算」。
     """
-    panel = resolve_weapon_panel(weapon_detail, role_detail, bonus, inherit_from)
+    label_detail = weapon_detail
+    if inherit_slot is not None:
+        panel = weapon_panel_for(build, inherit_slot)
+        label_detail = build.weapons.get(inherit_slot) or weapon_detail
+    elif slot == "con":
+        panel = con_weapon_panel(build, weapon_detail)
+    else:
+        panel = weapon_panel_for(build, slot)
 
-    own_rec, _ = resolve_weapon_record(weapon_detail, role_detail)
-    # 攻击行标签取被继承武器的伤害类型（dna-builder syncSkillWeaponDamageType 同口径）
-    label_rec, _ = resolve_weapon_record(inherit_from or weapon_detail, role_detail)
+    own_rec, _ = resolve_weapon_record(weapon_detail, build.role)
+    label_rec, _ = resolve_weapon_record(label_detail, build.role)
 
     rows: list[tuple[str, str]] = []
-    # 官方接口对个别武器不返回 elementName（如 无声的嘶吼），回退数据包的武器类别
-    type_label = weapon_detail.elementName or dob_loader.weapon_category(own_rec)
+    type_label = weapon_detail.elementName or tables.weapon_category(own_rec)
     rows.append(("武器类型", type_label or "未知"))
 
-    # 攻击行标签按武器「伤害类型」显示（贯穿/切割/震荡/灾厄），与游戏口径一致
     dmg_type = label_rec.get("伤害类型") if label_rec else None
     atk_label = f"{dmg_type}攻击" if dmg_type else "攻击"
 
-    # 基础攻击（按等级成长）× (1 + mod 攻击加成) × 精通倍率
-    final_atk = panel.attack
+    final_atk = panel.attack if panel else None
     if final_atk is not None:
         rows.append((atk_label, f"{final_atk:,.2f}"))
     else:
         rows.append((atk_label, "无法计算"))
 
-    # 副属性：基础值 × (1 + 角色侧 + 武器自身 + 该武器槽 mod)
-    # 注意字段口径：attribute.cri=暴击率(0.2)、crd=暴击伤害(2.0)、speed=攻速、trigger=触发率
+    if panel is None:
+        panel = WeaponPanel(attack=None, cri=0.0, crd=0.0, speed=0.0, trigger=0.0)
     rows.append(("暴击率", _fmt_pct(panel.cri * 100)))
     rows.append(("暴击伤害", _fmt_pct(panel.crd * 100)))
     rows.append(("攻击速度", _fmt_speed(panel.speed)))
     rows.append(("触发概率", _fmt_pct(panel.trigger * 100)))
 
     return WeaponAttributeRows(rows=rows, final_atk=final_atk)
-
-
-__all__ = [
-    "WeaponBonus",
-    "WeaponPanel",
-    "WeaponScopeBonus",
-    "WeaponAttributeRows",
-    "collect_char_weapon_scope_bonus",
-    "collect_weapon_bonus",
-    "compute_weapon_attribute",
-    "resolve_weapon_base_attack",
-    "resolve_weapon_level",
-    "resolve_weapon_mastery_ratio",
-    "resolve_weapon_panel",
-    "resolve_weapon_record",
-]
