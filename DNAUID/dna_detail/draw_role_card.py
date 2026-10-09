@@ -15,7 +15,7 @@ from .loadout import (
     WeaponSlotConflictError,
     resolve_weapon_loadout,
 )
-from ..dna_mod import dob_loader, ensure_data_ready
+from ..dna_sdk import version as dob_version_of, build_engine, ensure_data_ready
 from ..utils.image import (
     COLOR_WHITE,
     COLOR_SALMON,
@@ -36,12 +36,12 @@ from ..utils.image import (
 )
 from ..utils.utils import get_using_id, is_uid_hidden, is_peek_blocked
 from .local_damage import draw_local_damage_section
+from ..dna_sdk.build import SdkBuildError
 from ..utils.dna_api import dna_api
 from .local_attribute import (
     _role_element_cn,
     compute_attr_context,
     compute_final_attribute,
-    collect_weapon_categories,
 )
 from .weapon_renderer import draw_weapon_detail_section
 from ..utils.api.model import (
@@ -61,6 +61,7 @@ from ..utils.msgs.notify import (
 )
 from ..utils.name_convert import alias_to_char_name, char_name_to_char_id
 from ..utils.original_image import cache_original_image
+from ..dna_config.dna_config import DNAConfig
 from ..utils.database.models import DNABind, DNAUser
 from ..utils.fonts.dna_fonts import (
     dna_font_18,
@@ -259,57 +260,64 @@ async def draw_role_card(
 
     # DOB 数据是本地计算的唯一数据源：未就绪时在这里等初始化完成
     # （on_core_start 是后台钩子，里面的等待挡不住命令），失败时明确提示
-    dob_error = await ensure_data_ready()
+    allow_download = bool(DNAConfig.get_config("DobAutoUpdate").data)
+    dob_error = await ensure_data_ready(allow_download)
     if dob_error is not None:
         await send_dna_notify(bot, ev, dob_error)
         return
 
-    # 属性表（标准行 + 隐藏属性行）先算 —— 行数决定面板高度，
-    # 且武器面板需要它的 bonus（角色侧「可穿透到武器」属性：暴击/暴伤/触发/攻速）。
-    # AttrContext 只算一次，属性表与伤害区块共用（不动点迭代不重复跑）。
-    weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
-    weapon_categories = collect_weapon_categories(role_detail, weapon_details)
-    ctx = compute_attr_context(role_detail, weapon_categories, weapon_details)
-    final_attr = compute_final_attribute(role_detail, weapon_categories, weapon_details, ctx)
+    # 属性表（标准行 + 隐藏属性行）先算 —— 行数决定面板高度。
+    # 同一张卡片只装配一次，属性表与伤害区块共用同一份上下文。
+    try:
+        build = build_engine(role_detail, close_weapon_detail, ranged_weapon_detail, con_weapon_detail)
+    except Exception as error:
+        await send_dna_notify(
+            bot, ev, f"面板计算失败：{error}" if isinstance(error, SdkBuildError) else f"面板计算异常：{error!r}"
+        )
+        return
+    ctx = compute_attr_context(build)
+    final_attr = compute_final_attribute(build, ctx)
 
     # 伤害计算：纯本地（DOB 数据包技能字段 + dna-builder 结算口径），不再依赖官方 H5 接口
-    damage_section = draw_local_damage_section(
-        role_detail, con_weapon_detail, close_weapon_detail, ranged_weapon_detail, ctx
-    )
+    damage_section = draw_local_damage_section(build, ctx)
     # inherit 型同律武器（圆舞/剑非剑/疑星落）按被继承的近战/远程武器出面板
-    con_inherit = (
-        resolve_inherit_source(con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
-        if con_weapon_detail is not None
-        else None
-    )
+    con_inherit_slot: str | None = None
+    if con_weapon_detail is not None:
+        _inherit_detail = resolve_inherit_source(
+            con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail
+        )
+        if _inherit_detail is close_weapon_detail:
+            con_inherit_slot = "close"
+        elif _inherit_detail is ranged_weapon_detail:
+            con_inherit_slot = "ranged"
     weapon_sections: list[Image.Image] = []
     if con_weapon_detail is not None:
         weapon_sections.append(
             await draw_weapon_detail_section(
+                build,
                 con_weapon_detail,
                 "同律武器",
-                role_detail,
-                final_attr.bonus,
-                con_inherit,
+                "con",
+                con_inherit_slot,
             )
         )
 
     if close_weapon_detail is not None:
         weapon_sections.append(
             await draw_weapon_detail_section(
+                build,
                 close_weapon_detail,
                 "近战武器",
-                role_detail,
-                final_attr.bonus,
+                "close",
             )
         )
     if ranged_weapon_detail is not None:
         weapon_sections.append(
             await draw_weapon_detail_section(
+                build,
                 ranged_weapon_detail,
                 "远程武器",
-                role_detail,
-                final_attr.bonus,
+                "ranged",
             )
         )
 
@@ -625,11 +633,11 @@ async def draw_role_card(
     card.alpha_composite(avatar_title, (0, h_index))
 
     # 页脚：数据来源 + 数据包版本（数据未就绪时不加来源行）
-    dob_version = dob_loader.version()
+    pack_version = dob_version_of()
     card = add_footer(
         card,
         600,
-        source_line=f"Data Source: DNA Builder (DOB) | Pack Version: {dob_version}" if dob_version else None,
+        source_line=f"Data Source: DNA Builder (DOB) | Pack Version: {pack_version}" if pack_version else None,
     )
     card = await convert_img(card)
     message_ids = await bot.send(card, wait_recall=True)

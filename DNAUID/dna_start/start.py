@@ -10,17 +10,16 @@ async def all_start() -> None:
     await startup()
 
     # DOB 数据包：首次没有数据时同步等待初始化；已有数据时后台检查更新（失败不影响启动）。
-    # 两条路径内部都由 dob_pack.sync_async 重载查询层，这里不再重复 reload。
-    from ..dna_mod import dob_pack
+    from ..dna_sdk import SdkPackError, is_data_ready, init_if_needed, startup_auto_sync
     from ..dna_config.dna_config import DNAConfig
 
     if DNAConfig.get_config("DobAutoUpdate").data:
         try:
-            if dob_pack.is_data_ready():
-                dob_pack.startup_auto_sync()
+            if is_data_ready():
+                startup_auto_sync()
             else:
-                await dob_pack.init_if_needed()
-        except dob_pack.DobPackError as error:
+                await init_if_needed()
+        except SdkPackError as error:
             logger.warning(f"[二重螺旋] DOB 数据包初始化失败: {error!r}")
 
     logger.success("[二重螺旋] 启动完成✅")

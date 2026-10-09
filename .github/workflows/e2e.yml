@@ -1,0 +1,19 @@
+# 结算 parity e2e（轻量：最小数据包 + 期望输出，全离线）。
+# 全量 e2e 套件（mock 宿主/Web）依赖重，另行接入；本 job 只跑新增的结算用例。
+name: e2e-settlement
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  settlement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      # 仓内用例自带 gsuid_core/RESOURCE_PATH 轻桩；--noconftest 绕开 e2e/conftest 的重依赖链
+      - run: python -m pytest --noconftest e2e/tests/test_settlement.py -q

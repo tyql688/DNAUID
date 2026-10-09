@@ -24,19 +24,17 @@ import re
 from typing import TYPE_CHECKING
 from dataclasses import field, dataclass
 
-from ..dna_mod import dob_loader
+from ..dna_sdk.build import SdkBuild
+from ..dna_sdk.tables import SKILL_MAX_LEVEL
 from .local_attribute import (
     AttrContext,
     _role_element_cn,
     compute_attr_context,
-    collect_weapon_categories,
 )
-from ..dna_mod.dob_types import ResolvedSkillField
 
 if TYPE_CHECKING:
     from PIL import Image
 
-    from ..utils.api.model import RoleDetail, WeaponDetail
 
 from gsuid_core.logger import logger
 
@@ -50,11 +48,11 @@ class LocalSkillPanel:
     rows: list[tuple[str, str]] = field(default_factory=list)
 
 
-def _fmt_field(field: ResolvedSkillField) -> str:
+def _fmt_field(field: dict) -> str:
     """字段显示值：格式模板优先，否则按名称语义选单位"""
-    value = field["值"]
-    value2 = field["值2"]
-    fmt = field["格式"]
+    value = field.get("值")
+    value2 = field.get("值2")
+    fmt = field.get("格式")
 
     def fmt_pct(v: float) -> str:
         return f"{v * 100:.1f}%"
@@ -82,7 +80,7 @@ def _fmt_field(field: ResolvedSkillField) -> str:
 
         return re.sub(r"\{%?\}", _sub, fmt)
 
-    name = field["名称"]
+    name = field.get("名称") or ""
     if "半径" in name:
         return f"{value:.1f}米"
     if "时间" in name or name in ("延迟", "卡肉", "取消", "连段"):
@@ -94,63 +92,35 @@ def _fmt_field(field: ResolvedSkillField) -> str:
     return fmt_pct(value)
 
 
-def _resolve_levels(role_detail: RoleDetail) -> dict[str, int]:
-    """官方接口技能表 → {技能名: 结算等级}
-
-    skills[].level 已含溯源加成（官方 H5 请求侧会先减去溯源加成得到基础等级），
-    这里直接作为结算等级，封顶 12 级。
-    """
-    levels: dict[str, int] = {}
-    for skill in role_detail.skills:
-        if skill.level <= 0:
-            continue
-        levels[skill.skillName] = max(1, min(dob_loader.SKILL_MAX_LEVEL, skill.level))
-    return levels
-
-
 def build_local_skill_panels(
-    role_detail: RoleDetail,
+    build: SdkBuild,
     ctx: AttrContext,
 ) -> list[LocalSkillPanel]:
-    """本地结算全部技能字段（替代官方接口的 skills 返回）"""
-    pack_skills = {entry.get("名称", ""): entry for entry in dob_loader.get_char_skills(role_detail.charId)}
-    levels = _resolve_levels(role_detail)
-
+    """本地结算全部技能字段（引擎 skill_fields，显示等级取官方等级）。"""
+    role = build.role
     panels: list[LocalSkillPanel] = []
-    for skill in role_detail.skills:
-        pack = pack_skills.get(skill.skillName)
-        if pack is None or not pack.get("字段"):
+    for skill in role.skills:
+        fields = build.engine.skill_fields(skill.skillName)
+        if not fields:
             continue
-        level = levels.get(skill.skillName, 10)
-        fields = dob_loader.resolve_skill_fields(pack, level, ctx.tt)
+        level = max(1, min(SKILL_MAX_LEVEL, skill.level))
         panels.append(
             LocalSkillPanel(
                 名称=skill.skillName,
                 显示等级=level,
-                rows=[(field["名称"], _fmt_field(field)) for field in fields],
+                rows=[(f.get("名称") or "", _fmt_field(f)) for f in fields],
             )
         )
     if not panels:
-        logger.warning(f"[DNA 面板] 角色 {role_detail.charName} 无可结算的技能字段（数据包未收录？）")
+        logger.warning(f"[DNA 面板] 角色 {role.charName} 无可结算的技能字段（数据包未收录？）")
     return panels
 
 
 def draw_local_damage_section(
-    role_detail: RoleDetail,
-    con_weapon_detail: WeaponDetail | None = None,
-    close_weapon_detail: WeaponDetail | None = None,
-    ranged_weapon_detail: WeaponDetail | None = None,
+    build: SdkBuild,
     ctx: AttrContext | None = None,
 ) -> Image.Image:
-    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 三类武器伤害 + 技能字段面板
-
-    版式与配色沿用官方面板版（``damage_renderer``）的绘制助手，与官方 H5 口径一致：
-    主标题与各区块标题带渐变底纹 + 金色竖条；属性行标签用金色（``DATA_TEXT``）、
-    技能行标签用角色元素色，数值统一白色；行底纹按奇偶交替；长标签自动缩字号。
-    武器伤害 = 该武器一次攻击的期望伤害（``local_weapon_damage.compute_weapon_damage``，
-    打 dna-builder 默认目标「生命木桩130」，不含防御乘区）；数据不足时显示「无法计算」。
-    ``ctx`` 传已算好的 ``AttrContext`` 时直接复用（与属性表共用同一份，不再重复迭代）。
-    """
+    """绘制本地伤害计算区块：角色属性（基础 → 最终）+ 三类武器伤害 + 技能字段面板。"""
     from PIL import Image, ImageDraw
 
     from .damage_renderer import (
@@ -181,11 +151,14 @@ def draw_local_damage_section(
     from ..utils.fonts.dna_fonts import dna_font_22, dna_font_30
     from .local_weapon_attribute import resolve_inherit_source
 
+    role_detail = build.role
+    weapons = build.weapons
+    close_weapon_detail = weapons.get("close")
+    ranged_weapon_detail = weapons.get("ranged")
+    con_weapon_detail = weapons.get("con")
     if ctx is None:
-        weapon_details = [close_weapon_detail, ranged_weapon_detail, con_weapon_detail]
-        weapon_categories = collect_weapon_categories(role_detail, weapon_details)
-        ctx = compute_attr_context(role_detail, weapon_categories, weapon_details)
-    panels = build_local_skill_panels(role_detail, ctx)
+        ctx = compute_attr_context(build)
+    panels = build_local_skill_panels(build, ctx)
 
     # 角色属性：基础（官方 attribute 裸值）→ 最终（本地计算）
     attr = role_detail.attribute
@@ -210,9 +183,9 @@ def draw_local_damage_section(
     }
     final_rate["昂扬"] = f"{ctx.bonus.rate.get('昂扬', 0.0):.0f}%"
     final_rate["背水"] = f"{ctx.bonus.rate.get('背水', 0.0):.0f}%"
-    # 充盈威力：白板 100% +（角色 mod 加成 + 武器触发溢出的转化）
-    fullness = ctx.bonus.rate.get("充盈威力", 0.0) + ctx.bonus.extra.get("充盈威力", 0.0) + ctx.fullness_weapon
-    final_rate["充盈威力"] = f"{100 + fullness:.0f}%"
+    # 充盈威力 0 起始（TS：totalFullness 从 0 累加，界面 val*100；+1 只在充盈伤害乘区现用）
+    fullness = ctx.bonus.rate.get("充盈威力", 0.0) + ctx.bonus.extra.get("充盈威力", 0.0)
+    final_rate["充盈威力"] = f"{fullness:.0f}%"
 
     def _base_num(name: str) -> str:
         return f"{base_map[name]:,.2f}"
@@ -237,7 +210,7 @@ def draw_local_damage_section(
         ("技能范围", _base_rate("技能范围"), final_rate["技能范围"]),
         ("技能耐久", _base_rate("技能耐久"), final_rate["技能耐久"]),
         ("技能效益", _base_rate("技能效益"), final_rate["技能效益"]),
-        ("充盈威力", "100%", final_rate["充盈威力"]),
+        ("充盈威力", "0%", final_rate["充盈威力"]),
         ("昂扬", "0%", final_rate["昂扬"]),
         ("背水", "0%", final_rate["背水"]),
     ]
@@ -245,20 +218,25 @@ def draw_local_damage_section(
 
     # 三类武器伤害（近战/远程/同律）：本地期望伤害（dna-builder 口径，打生命木桩130）
     # inherit 型同律武器按被继承的近战/远程武器结算
-    con_inherit = (
-        resolve_inherit_source(con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail)
-        if con_weapon_detail is not None
-        else None
-    )
+    con_inherit_slot: str | None = None
+    if con_weapon_detail is not None:
+        inherit_detail = resolve_inherit_source(
+            con_weapon_detail, role_detail, close_weapon_detail, ranged_weapon_detail
+        )
+        if inherit_detail is close_weapon_detail:
+            con_inherit_slot = "close"
+        elif inherit_detail is ranged_weapon_detail:
+            con_inherit_slot = "ranged"
     weapon_metrics: list[_WeaponMetric] = []
-    for label, weapon_detail, inherit_from in (
-        ("近战", close_weapon_detail, None),
-        ("远程", ranged_weapon_detail, None),
-        ("同律", con_weapon_detail, con_inherit),
+    for label, slot, inherit_slot in (
+        ("近战", "close", None),
+        ("远程", "ranged", None),
+        ("同律", "con", con_inherit_slot),
     ):
+        weapon_detail = weapons.get(slot)
         if weapon_detail is None:
             continue
-        damage = compute_weapon_damage(weapon_detail, role_detail, ctx, inherit_from)
+        damage = compute_weapon_damage(build, slot, ctx, inherit_slot)
         value = f"{damage:,.0f}" if damage is not None else "无法计算"
         weapon_metrics.append(_WeaponMetric(label=label, name=weapon_detail.name, value=value))
 

@@ -1,5 +1,7 @@
 line-length = 120
 target-version = "py311"
+# e2e/mock_host/_real/ 为上游同步的 vendor 拷贝（见 sync_real_gsuid.py），不做 lint。
+exclude = ["e2e/mock_host/_real"]
 
 [lint]
 select = ["E", "F", "I", "W", "UP", "ASYNC"]
