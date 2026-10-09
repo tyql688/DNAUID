@@ -224,19 +224,40 @@
         "need_ck": true,
         "need_sk": false,
         "need_admin": false
-      },
+      }
+    ]
+  },
+  "DOB构筑": {
+    "desc": "DNA Builder（DOB）社区构筑，指令里的 DOB 大小写均可",
+    "data": [
       {
         "name": "DOB榜单",
-        "desc": "查看 DOB 排行榜（各榜单席位一览）",
+        "desc": "查看 DOB 各榜单构筑与 DPS",
         "eg": "DOB榜单",
         "need_ck": false,
         "need_sk": false,
         "need_admin": false
       },
       {
-        "name": "DOB构筑",
-        "desc": "查看 DOB 构筑卡（支持BDID / 角色构筑列表与序号点选）",
-        "eg": "DOBBD <构筑ID> / DOB<角色名>构筑 [序号] / <角色名>构筑 [序号]",
+        "name": "构筑卡",
+        "desc": "按构筑 ID 查看构筑卡",
+        "eg": "DOBBD <构筑ID>",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
+        "name": "角色构筑列表",
+        "desc": "查看角色点赞最多的 10 个构筑",
+        "eg": "DOB菲娜构筑",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
+      },
+      {
+        "name": "指定构筑",
+        "desc": "按列表序号查看构筑卡",
+        "eg": "DOB菲娜构筑 1",
         "need_ck": false,
         "need_sk": false,
         "need_admin": false
