@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["pep621", "pip_requirements", "custom.regex"],
+  "rangeStrategy": "bump",
+  "commitMessagePrefix": "⬆️",
+  "commitMessageAction": "升级",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "至 {{{newVersion}}}",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "gscore_auto_update_dep 是 gsuid_core 自定义字段，标准 pep621 管理器不识别",
+      "managerFilePatterns": ["/^pyproject\\.toml$/"],
+      "matchStrings": ["gscore_auto_update_dep = \\[\"(?<depName>dna-builder-sdk)>=(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "pypi"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["*"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["dna-builder-sdk"],
+      "enabled": true,
+      "groupName": "dna-builder-sdk"
+    }
+  ]
+}

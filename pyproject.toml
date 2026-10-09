@@ -35,6 +35,8 @@ dependencies = [
     "dna-builder-sdk>=0.1.2",
     "websocket-client>=1.9.0",
 ]
+# gsuid_core 启动时对这里的包做版本比对并升级；下限由 Renovate 与 dependencies 同步抬高
+gscore_auto_update_dep = ["dna-builder-sdk>=0.1.2"]
 name = "DNAUID"
 version = "1.0.0"
 description = "支持OneBot(QQ)、OneBotV12、QQ频道、微信、KOOK（开黑啦）、Telegram（电报）、FeiShu（飞书）、DoDo、Villa（米游社大别野）、Discord的全功能HoshinoBot/NoneBot2/Koishi/yunzai/ZeroBot二重螺旋机器人插件"
