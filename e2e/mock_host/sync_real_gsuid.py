@@ -1,39 +1,28 @@
-"""同步上游 gsuid_core 的真实帮助绘制链路（pin 到固定 commit）。
+"""把外层 gsuid_core 工作区里 mock 宿主要装载的真实模块与帮助图素材同步到 ``_real/``。
 
-只取纯 PIL 绘制链路所需的少量文件，放到 ``e2e/mock_host/_real/`` 下提交，
-mock 宿主通过白名单 import hook 直接调用**真实的** ``get_new_help``，
-而不是自己重写版式。
+插件开发时放在 ``gsuid_core/plugins/DNAUID`` 下，直接复制同一棵树里的文件，
+保证 e2e 跑的就是当前 core 的代码（``tests/test_real_sync.py`` 会检查是否一致）。
 
-用法：``uv run --group e2e e2e/mock_host/sync_real_gsuid.py``
+用法：``python e2e/mock_host/sync_real_gsuid.py``
 """
 
 from __future__ import annotations
 
-import urllib.request
+import sys
+import shutil
+import subprocess
 from pathlib import Path
 
-PINNED_COMMIT = "fb80b874533c23b565a74ebd8549ce09e4742a55"
-BASE = f"https://raw.githubusercontent.com/Genshin-bots/gsuid_core/{PINNED_COMMIT}/gsuid_core"
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# 上游相对路径 -> 本地相对路径（_real/ 下保持同名，hook 按原模块名装载）
-FILES = [
-    "help/model.py",
-    "help/draw_new_plugin_help.py",
-    "utils/fonts/fonts.py",
-    "utils/image/convert.py",
-    "utils/image/image_tools.py",
-    "utils/image/utils.py",
-    "pool.py",
-    "i18n.py",
-    "utils/database/base_models.py",
-    "utils/database/write_gate.py",
-    "utils/cookie_manager/qrlogin.py",
-    "utils/plugins_config/models.py",
-    "utils/download_resource/download_file.py",
-]
+from e2e.mock_host.real_gsuid import REAL_DIR, REAL_SUBMODULES  # noqa: E402
 
-# 真实帮助图版式依赖的底图/装饰素材（共约 470KB，一并入库）
-TEXTURES = [
+# 插件在 <仓库>/gsuid_core/plugins/DNAUID，往上两级是 core 的包目录
+CORE_PKG = ROOT.parents[1]
+# 真实帮助图版式依赖的底图/装饰素材（共约 470KB）
+TEXTURES = (
     "banner_bg_dark.jpg",
     "banner_bg_light.jpg",
     "bg_dark.jpg",
@@ -47,53 +36,37 @@ TEXTURES = [
     "item_bg_light.png",
     "item_dark.png",
     "item_light.png",
-]
-
-REAL_DIR = Path(__file__).parent / "_real"
+)
 
 
-def _fetch(rel: str) -> str:
-    url = f"{BASE}/{rel}"
-    req = urllib.request.Request(url, headers={"User-Agent": "DNAUID-e2e-sync"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read().decode("utf-8")
+def inside_core() -> bool:
+    return (CORE_PKG / "help" / "draw_new_plugin_help.py").is_file()
+
+
+def synced_files() -> list[str]:
+    return [*REAL_SUBMODULES.values(), *(f"help/texture2d/{name}" for name in TEXTURES)]
 
 
 def main() -> int:
-    REAL_DIR.mkdir(parents=True, exist_ok=True)
+    if not inside_core():
+        print(f"FAIL 没找到 gsuid_core（{CORE_PKG}），需要把插件放在 gsuid_core/plugins/ 下运行")
+        return 1
+    commit = subprocess.run(
+        ["git", "-C", str(CORE_PKG), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    for rel in synced_files():
+        dest = REAL_DIR / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CORE_PKG / rel, dest)
+        print(f"OK {rel}")
     (REAL_DIR / "PINNED.txt").write_text(
-        f"commit={PINNED_COMMIT}\nsource=https://github.com/Genshin-bots/gsuid_core\n"
-        f"files={','.join(FILES)}\n"
+        f"commit={commit}\nsource=local gsuid_core working tree\n"
+        f"files={','.join(REAL_SUBMODULES.values())}\n"
         "license=GPL-3.0-or-later (same as DNAUID)\n",
         encoding="utf-8",
     )
-    ok = True
-    for rel in FILES:
-        try:
-            text = _fetch(rel)
-            dest = REAL_DIR / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(text, encoding="utf-8")
-            print(f"OK {rel} ({len(text)} chars)")
-        except Exception as exc:  # noqa: BLE001
-            ok = False
-            print(f"FAIL {rel}: {exc!r}")
-    for name in TEXTURES:
-        try:
-            url = f"{BASE}/help/texture2d/{name}"
-            req = urllib.request.Request(url, headers={"User-Agent": "DNAUID-e2e-sync"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                blob = resp.read()
-            dest = REAL_DIR / "help" / "texture2d" / name
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(blob)
-            print(f"OK help/texture2d/{name} ({len(blob)} bytes)")
-        except Exception as exc:  # noqa: BLE001
-            ok = False
-            print(f"FAIL help/texture2d/{name}: {exc!r}")
-    # 字体 20MB 不入库：运行时缺失则回退到插件自带字体（见 real_gsuid.py）
-    print("note: MiSansVF.ttf (20MB) is NOT vendored; fallback font is used when absent.")
-    return 0 if ok else 1
+    # MiSansVF.ttf 有 20MB 不入库，real_gsuid.ensure_core_font 换成插件自带字体
+    return 0
 
 
 if __name__ == "__main__":

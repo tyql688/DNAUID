@@ -20,6 +20,8 @@ import asyncio
 from typing import Any
 from pathlib import Path
 
+from PIL import Image, ImageStat
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -98,10 +100,6 @@ SKIP_SUBSTR = ("删除全部UID",)  # 破坏性指令只在隔离用户下跑（
 
 
 def _sample_image() -> str:
-    try:
-        from PIL import Image  # type: ignore
-    except ImportError:
-        return ""
     img = Image.new("RGB", (120, 90), (90, 140, 250))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -160,24 +158,17 @@ def build_cases(prefix: str) -> list[dict]:
 def _image_blank_flags(replies: list) -> list[str]:
     """图片回复像素方差为 0 即判空白（远端图没 Render 出来的典型症状）。"""
     flags: list[str] = []
-    try:
-        import base64  # noqa: PLC0415
-        from io import BytesIO  # noqa: PLC0415
-
-        from PIL import Image, ImageStat  # type: ignore  # noqa: PLC0415
-    except ImportError:
-        return flags
     for reply in replies:
         for seg in reply.get("segments", []):
             if seg.get("kind") != "image" or not seg.get("url"):
                 continue
             try:
                 raw = base64.b64decode(seg["url"].split(",", 1)[1])
-                img = Image.open(BytesIO(raw)).convert("L")
+                img = Image.open(io.BytesIO(raw)).convert("L")
                 # 小图（取样图等纯色块）不判；只抓大面积空白渲染失败
                 if max(img.size) >= 200 and ImageStat.Stat(img).stddev[0] == 0:
                     flags.append(f"blank-image {img.size}")
-            except Exception:  # noqa: BLE001
+            except (ValueError, OSError, IndexError):
                 flags.append("undecodable-image")
     return flags
 

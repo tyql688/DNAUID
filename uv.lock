@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
@@ -305,9 +305,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "dna-builder-sdk" },
-    { name = "msgpack" },
     { name = "pycryptodome" },
-    { name = "pydantic" },
     { name = "websocket-client" },
 ]
 
@@ -322,10 +320,9 @@ e2e = [
     { name = "greenlet" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "msgpack" },
     { name = "msgspec" },
     { name = "pillow" },
-    { name = "pycryptodome" },
+    { name = "pydantic" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "qrcode" },
@@ -335,15 +332,12 @@ e2e = [
     { name = "tzdata" },
     { name = "uvicorn" },
     { name = "watchfiles" },
-    { name = "websocket-client" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dna-builder-sdk", specifier = ">=0.1.2" },
-    { name = "msgpack", specifier = ">=1.0.0" },
     { name = "pycryptodome", specifier = ">=3.23.0" },
-    { name = "pydantic", specifier = ">=2.0" },
     { name = "websocket-client", specifier = ">=1.9.0" },
 ]
 
@@ -358,10 +352,9 @@ e2e = [
     { name = "greenlet", specifier = ">=3" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "msgpack", specifier = ">=1.0.0" },
     { name = "msgspec", specifier = ">=0.13" },
     { name = "pillow", specifier = ">=10" },
-    { name = "pycryptodome", specifier = ">=3.23.0" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "qrcode", specifier = ">=7.3" },
@@ -371,7 +364,6 @@ e2e = [
     { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", specifier = ">=0.20" },
     { name = "watchfiles", specifier = ">=1.0" },
-    { name = "websocket-client", specifier = ">=1.9.0" },
 ]
 
 [[package]]

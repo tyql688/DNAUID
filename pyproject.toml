@@ -32,10 +32,8 @@ license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.11, <4.0"
 dependencies = [
     "pycryptodome>=3.23.0",
-    "msgpack>=1.0.0",
     "dna-builder-sdk>=0.1.2",
     "websocket-client>=1.9.0",
-    "pydantic>=2.0",
 ]
 name = "DNAUID"
 version = "1.0.0"
@@ -47,9 +45,8 @@ homepage = "https://github.com/tyql688/DNAUID"
 repository = "https://github.com/tyql688/DNAUID"
 
 [dependency-groups]
-# e2e 套件依赖（与 e2e/requirements-e2e.txt 同步）：
-#   uv sync --group e2e / uv run --group e2e e2e/run_web.py
-# mock 宿主与 Web 服务本身仅需标准库，以下为 pytest + 真实插件导入所需。
+# e2e 套件依赖：uv sync --group e2e / uv run --group e2e e2e/run_web.py
+# mock 宿主、Web 服务与不装宿主时导入插件所需的依赖
 e2e = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
@@ -60,9 +57,7 @@ e2e = [
     "httpx>=0.27",
     "jinja2>=3.1",
     "cachetools>=5",
-    "pycryptodome>=3.23.0",
-    "msgpack>=1.0.0",
-    "websocket-client>=1.9.0",
+    "pydantic>=2",
     "aiohttp>=3.9",
     "async-timeout>=4",
     "starlette>=0.37",

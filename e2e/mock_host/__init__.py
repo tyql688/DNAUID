@@ -5,7 +5,6 @@ from .event import MockEvent, make_event
 from .stubs import (
     HANDLERS,
     PLUGIN_INFO,
-    HELP_RENDERER,
     install,
     core_config,
     reset_state,
@@ -19,7 +18,6 @@ from .dispatcher import MockHost
 __all__ = [
     "HANDLERS",
     "PLUGIN_INFO",
-    "HELP_RENDERER",
     "MessageSegment",
     "MockBot",
     "MockEvent",

@@ -9,6 +9,7 @@ from PIL import Image, ImageOps, ImageDraw
 from gsuid_core.logger import logger
 from gsuid_core.models import Event
 from gsuid_core.utils.image.image_tools import (
+    get_qq_avatar,
     crop_center_img,
     get_event_avatar,
 )
@@ -160,6 +161,13 @@ async def get_avatar_img(char_id: str | int, pic_url: str | None = None) -> Imag
     return await _fetch_asset(AVATAR_PATH, f"avatar_{char_id}.png", pic_url, blank_size=(256, 256))
 
 
+async def get_qq_avatar_img(qq: str, size: int = 100) -> Image.Image | None:
+    # 核心 get_qq_avatar 拿不到号会退回一个固定 QQ 的头像，非纯数字先挡掉
+    if not qq.isdigit():
+        return None
+    return await get_qq_avatar(avatar_url=f"https://q1.qlogo.cn/g?b=qq&nk={qq}&s={size}")
+
+
 async def get_weapon_img(weapon_id: str | int, pic_url: str | None = None) -> Image.Image:
     name = f"weapon_{weapon_id}.png"
     return await _fetch_asset(WEAPON_PATH, name, pic_url, blank_size=(256, 256), size=(256, 256))
@@ -203,6 +211,12 @@ def get_grade_img(grade_level: int) -> Image.Image:
     # 命座等级会随版本增加，越界时夹到现有素材的上下限
     idx = max(0, min(grade_level, len(grades) - 1))
     return grades[idx]
+
+
+def get_element_img(element: str) -> Image.Image:
+    """元素图标，element 取光/暗/水/火/雷/风。"""
+    with Image.open(TEXT_PATH / "element" / f"{element}.png") as image:
+        return image.convert("RGBA")
 
 
 async def get_avatar_title_img(

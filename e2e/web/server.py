@@ -1,4 +1,4 @@
-"""e2e 聊天 Web 服务（仅标准库，无第三方依赖）。
+"""e2e 聊天 Web 服务（HTTP 层用标准库 http.server）。
 
 - ``GET /``                 即时聊天界面
 - ``GET  /api/state``       宿主状态：前缀 / 插件 / 路由数 / 历史
@@ -18,6 +18,8 @@ from typing import Any
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
+from e2e.mock_host.stubs import DEFAULT_PORT
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 _state_lock = threading.Lock()
@@ -31,7 +33,7 @@ def _run_loop_forever(loop: asyncio.AbstractEventLoop) -> None:
 
 
 class _ServerState:
-    def __init__(self, public_host: str = "127.0.0.1", public_port: int = 8765) -> None:
+    def __init__(self, public_host: str = "127.0.0.1", public_port: int = DEFAULT_PORT) -> None:
         import uuid as _uuid  # noqa: PLC0415
         import threading  # noqa: PLC0415
 
@@ -64,15 +66,10 @@ class _ServerState:
         return future.result(timeout=timeout)
 
     def close(self) -> None:
-        try:
-            for task in self.host.background:
-                self.loop.call_soon_threadsafe(task.cancel)
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            self.loop.call_soon_threadsafe(self.loop.stop)
-        except Exception:  # noqa: BLE001
-            pass
+        # 在 HTTP 线程调用，loop 线程里任务完成会同时删列表元素，先取快照
+        for task in list(self.host.background):
+            self.loop.call_soon_threadsafe(task.cancel)
+        self.loop.call_soon_threadsafe(self.loop.stop)
 
     def _start_login_pages(self) -> int:
         """用 uvicorn 挂载插件注册在 gsuid_core.web_app 上的真实登录页."""
@@ -117,7 +114,7 @@ def _normalize_upload_image(data_url: str) -> str:
         buf = _io.BytesIO()
         img.save(buf, format="PNG")
         return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
-    except Exception:  # noqa: BLE001
+    except (ValueError, OSError):
         return data_url
 
 
@@ -138,10 +135,7 @@ def reset_for_tests() -> None:
     with _state_lock:
         old, _host = _host, None
     if old is not None:
-        try:
-            old.close()
-        except Exception:  # noqa: BLE001
-            pass
+        old.close()
     reset_state()
 
 
@@ -315,10 +309,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 _PUBLIC_HOST = "127.0.0.1"
-_PUBLIC_PORT = 8765
+_PUBLIC_PORT = DEFAULT_PORT
 
 
-def run(host: str = "127.0.0.1", port: int = 8765) -> None:
+def run(host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> None:
     global _host, _PUBLIC_HOST, _PUBLIC_PORT
     _PUBLIC_HOST, _PUBLIC_PORT = host, port
     with _state_lock:
@@ -342,6 +336,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="DNAUID e2e mock 宿主聊天服务")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
     run(args.host, args.port)

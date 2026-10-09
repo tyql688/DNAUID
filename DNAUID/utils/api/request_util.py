@@ -39,15 +39,6 @@ WEB_LOGIN_BASE_HEADER = {
     ),
 }
 
-DAMAGE_BASE_HEADER = {
-    "accept": "application/json",
-    "content-type": "application/json;charset=UTF-8",
-    "source": "h5",
-    "version": "3.11.1",
-    "origin": "https://dnabbs.yingxiong.com",
-    "referer": "https://dnabbs.yingxiong.com/",
-}
-
 
 async def get_base_header(
     dev_code: str | None = None,
@@ -79,12 +70,6 @@ def get_web_login_header(
     header["Referer"] = "https://dnabbs.yingxiong.com/"
     if token is not None:
         header["token"] = token
-    return header
-
-
-def get_damage_header(token: str) -> dict[str, str]:
-    header = copy.deepcopy(DAMAGE_BASE_HEADER)
-    header["token"] = token
     return header
 
 

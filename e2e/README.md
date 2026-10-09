@@ -14,10 +14,9 @@ mock 只替换“宿主边界”（SV 注册、Bot 发送、Event、DB 引擎位
 ```text
 e2e/
 ├── README.md                  本文档
-├── requirements-e2e.txt       pytest + 全真实链路所需的第三方依赖
 ├── pytest.ini / conftest.py   pytest 配置与 mock 安装
-├── smoke.py                   无 pytest 时的冒烟 runner（仅标准库）
 ├── run_web.py                 Web 服务启动入口
+├── fixtures/settlement/       结算回归用的最小数据包与期望输出
 ├── mock_host/
 │   ├── stubs.py               伪造 gsuid_core 包（SV/Bot/Event/订阅/配置/DB 位）
 │   ├── gs_config_real.py      真实插件配置系统（defaults + JSON 持久化）
@@ -27,8 +26,7 @@ e2e/
 │   ├── segments.py            消息段序列化（文本/图片/at/转发/base64://）
 │   ├── loader.py              加载真实插件模块 + DB 初始化
 │   ├── real_gsuid.py          白名单 import hook（装载上游真实源码）
-│   ├── sync_real_gsuid.py     同步上游源码脚本（pin 固定 commit）
-│   ├── help_image.py          本地降级渲染器（真实链路缺失时才用）
+│   ├── sync_real_gsuid.py     从本地 core 同步 _real/（test_real_sync 检查是否一致）
 │   ├── audit.py               静态依赖覆盖审计
 │   ├── sweep.py               全指令动态横扫
 │   └── _real/                 上游 gsuid_core 真实源码（见 PINNED.txt）
@@ -44,23 +42,26 @@ e2e/
 uv sync --group e2e
 ```
 
-依赖组定义在 `pyproject.toml` 的 `[dependency-groups] e2e`（与
-`e2e/requirements-e2e.txt` 保持同步，改一处记着改另一处）。
+依赖组定义在 `pyproject.toml` 的 `[dependency-groups] e2e`。插件放在 gsuid_core 里开发时，直接用 core 的 `.venv` 跑也行：`../../../.venv/bin/pytest e2e/tests`。
 
-mock 宿主与 Web 服务本身仅需标准库；依赖是为“真实导入全部插件模块”
-准备的（缺失时相关测试自动 skip）。
+全量 e2e 依赖这个依赖组（Pillow、FastAPI、SQLModel 等），没装会在导入阶段直接报错。
 
 ```bash
 uv run --group e2e pytest e2e/tests/ -v   # 全量（含约1分钟的横扫）
-uv run --group e2e e2e/smoke.py               # 无 pytest 时的最小冒烟
+```
+
+结算回归（`tests/test_settlement.py`）和数据包加载 / 更新回归（`tests/test_pack.py`）离线运行，CI 只跑这两项。改了结算口径要重新生成期望值，并逐项核对 `expected.json` 的 diff：
+
+```bash
+python e2e/tests/test_settlement.py --update
 ```
 
 ## 用法 A：直接打后端 API（Agent / 自动化测试）
 
-启动服务（默认 `127.0.0.1:8765`）：
+启动服务（默认 `127.0.0.1:18765`，避开 core 的 8765）：
 
 ```bash
-uv run --group e2e e2e/run_web.py --port 8765 --watch
+uv run --group e2e e2e/run_web.py --watch
 ```
 
 `--watch` 用原生文件事件监听 `DNAUID/` 与 `e2e/` 下的 `*.py`，改动自动重启服务
@@ -69,7 +70,7 @@ uv run --group e2e e2e/run_web.py --port 8765 --watch
 ### 聊天（核心）
 
 ```bash
-curl -X POST http://127.0.0.1:8765/api/chat \
+curl -X POST http://127.0.0.1:18765/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"text":"dna帮助","user_id":"10001","group_id":null,"images":[]}'
 ```
@@ -83,23 +84,23 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 
 ```bash
 # 自定义消息前缀（默认 dna/DNA/jjj/JJJ，来自插件声明）
-curl -X POST http://127.0.0.1:8765/api/config \
+curl -X POST http://127.0.0.1:18765/api/config \
   -H 'Content-Type: application/json' -d '{"prefixes":["#","!"]}'
 
 # 宿主状态：前缀 / 插件 / 路由数 / 加载报告 / 历史
-curl http://127.0.0.1:8765/api/state
+curl http://127.0.0.1:18765/api/state
 
 # 指令表（按 SV 分组：kind + triggers，供自动化遍历）
-curl http://127.0.0.1:8765/api/commands
+curl http://127.0.0.1:18765/api/commands
 
 # 历史增量（后台推送靠它冒泡；since 为绝对下标）
-curl 'http://127.0.0.1:8765/api/history?since=0'
+curl 'http://127.0.0.1:18765/api/history?since=0'
 
 # 清空（含 mock DB 不清；DB 文件见“数据位置”）
-curl -X POST http://127.0.0.1:8765/api/reset
+curl -X POST http://127.0.0.1:18765/api/reset
 
 # 运行插件 on_core_start 钩子（结果进 trace）
-curl -X POST http://127.0.0.1:8765/api/startup
+curl -X POST http://127.0.0.1:18765/api/startup
 ```
 
 ### Python 进程内调用（单测/脚本）
@@ -143,7 +144,7 @@ uv run --group e2e e2e/mock_host/sweep.py
 
 ## 用法 B：打开网页（人类手动测试）
 
-浏览器打开 http://127.0.0.1:8765/ ：
+浏览器打开 http://127.0.0.1:18765/ ：
 
 - **发消息**：输入框 Enter 发送，Shift+Enter 换行；`自动补前缀` 勾上可省略前缀。
 - **指令 tab**：侧边栏“指令”页是全量指令表，可搜索，点“填入”进输入框。
@@ -181,4 +182,4 @@ uv run --group e2e e2e/mock_host/sweep.py
 - `角色【X】的CharId未找到` → 先发 `dna恢复别名`（生产环境同样需要这一步）。
 - `不能同时携带两把近战武器` → 插件拿展柜真数据校验的，改游戏内配装或带武器查（`dna法露茜面板+祈请净火`）。
 - `未找到有效的密函数据` → 先看 trace 是异常还是业务回复；公开数据无需登录，偶发多为游戏接口抖动，重试即可。
-- 登录页打不开 → 确认服务启动无报错（uvicorn 端口为聊天端口自动分配），`get_dna_login_url` 依赖 core 的 HOST/PORT（默认 `127.0.0.1:8765`）。
+- 登录页打不开 → 确认服务启动无报错（uvicorn 端口为聊天端口自动分配），`get_dna_login_url` 依赖 core 的 HOST/PORT（e2e 默认 `127.0.0.1:18765`）。

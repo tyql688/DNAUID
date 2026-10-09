@@ -680,6 +680,3 @@ condition-*.json
 
 # test wiki data
 DNAUID/dna_test/
-
-### DOB 数据包（运行时由 dna更新数据包/启动自更新生成）###
-DNAUID/dna_mod/data/dob_data.json

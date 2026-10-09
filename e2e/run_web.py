@@ -69,7 +69,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="DNAUID e2e mock 宿主聊天服务")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    from e2e.mock_host.stubs import DEFAULT_PORT
+
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--watch", action="store_true", help="原生监听 DNAUID/ 与 e2e/ 的 *.py，改动自动重启（开发用）")
     args = parser.parse_args()
     if args.watch and os.environ.get(_CHILD_ENV) != "1":

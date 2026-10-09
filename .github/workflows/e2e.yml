@@ -1,5 +1,4 @@
-# 结算 parity e2e（轻量：最小数据包 + 期望输出，全离线）。
-# 全量 e2e 套件（mock 宿主/Web）依赖重，另行接入；本 job 只跑新增的结算用例。
+# 结算与数据包回归：最小数据包 + 期望输出，全离线。全量 e2e（mock 宿主/Web）依赖重，不在 CI 跑。
 name: e2e-settlement
 
 on:
@@ -14,6 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -r requirements.txt pytest
-      # 仓内用例自带 gsuid_core/RESOURCE_PATH 轻桩；--noconftest 绕开 e2e/conftest 的重依赖链
-      - run: python -m pytest --noconftest e2e/tests/test_settlement.py -q
+      # pydantic 由宿主提供，不在插件依赖里
+      - run: python -m pip install -r requirements.txt pydantic pytest
+      # 用例自带 gsuid_core / RESOURCE_PATH 轻桩；--noconftest 绕开 e2e/conftest 的 mock 宿主依赖
+      - run: python -m pytest --noconftest e2e/tests/test_settlement.py e2e/tests/test_pack.py -q

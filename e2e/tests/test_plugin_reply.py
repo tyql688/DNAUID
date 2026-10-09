@@ -1,4 +1,4 @@
-"""真实插件回复测试：需要第三方依赖，缺失时自动 skip。
+"""真实插件回复测试。
 
 运行前：``uv sync --group e2e``
 执行：``uv run --group e2e pytest e2e/tests/test_plugin_reply.py -v``
@@ -13,15 +13,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from e2e.mock_host import MockHost, load_plugin, reset_state  # noqa: E402
-
-MISSING: list[str] = []
-for _mod in ("PIL", "sqlmodel", "httpx", "jinja2", "cachetools"):
-    try:
-        __import__(_mod)
-    except ImportError:
-        MISSING.append(_mod)
-
-pytestmark = pytest.mark.skipif(bool(MISSING), reason=f"缺少第三方依赖：{MISSING}")
 
 
 @pytest.fixture()

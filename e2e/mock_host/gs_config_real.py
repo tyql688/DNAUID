@@ -27,24 +27,13 @@ class StringConfig:
 
     # -- 持久化 ---------------------------------------------------------
     def _read(self) -> dict[str, Any]:
-        try:
-            if self.path.exists():
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    return data
-        except (ValueError, OSError):
-            pass
-        return {}
+        if not self.path.exists():
+            return {}
+        return json.loads(self.path.read_text(encoding="utf-8"))
 
     def _write(self) -> None:
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(
-                json.dumps(self._overrides, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(self._overrides, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # -- 读写 -----------------------------------------------------------
     def _merged_item(self, key: str) -> Any:
@@ -52,10 +41,7 @@ class StringConfig:
             raise KeyError(f"[{self.title}] 未知配置项：{key}")
         item = copy.deepcopy(self.default[key])
         if key in self._overrides:
-            try:
-                item.data = self._overrides[key]
-            except (AttributeError, TypeError):
-                pass
+            item.data = self._overrides[key]
         return item
 
     def get_config(self, key: str) -> Any:

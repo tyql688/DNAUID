@@ -20,6 +20,7 @@ async def init_plugin_db(reset: bool = False) -> dict[str, Any]:
     """
     from sqlmodel import SQLModel  # noqa: PLC0415
     from sqlalchemy import text, create_engine  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
 
     from gsuid_core.utils.database.startup import exec_list  # noqa: PLC0415
     from gsuid_core.utils.database.base_models import init_database  # type: ignore[import-not-found]  # noqa: PLC0415
@@ -39,7 +40,7 @@ async def init_plugin_db(reset: bool = False) -> dict[str, Any]:
             try:
                 conn.execute(text(stmt))
                 migrated += 1
-            except Exception:  # noqa: BLE001
+            except OperationalError:
                 skipped += 1  # 列已存在等情况直接跳过
     engine.dispose()
     return {

@@ -240,6 +240,14 @@
         "need_ck": false,
         "need_sk": false,
         "need_admin": false
+      },
+      {
+        "name": "数据包状态",
+        "desc": "查看当前 DOB 数据包版本",
+        "eg": "数据包状态",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": false
       }
     ]
   },
@@ -467,6 +475,14 @@
         "name": "(强制)?恢复别名",
         "desc": "(强制)?恢复别名",
         "eg": "恢复别名",
+        "need_ck": false,
+        "need_sk": false,
+        "need_admin": true
+      },
+      {
+        "name": "更新数据包",
+        "desc": "立即检查并下载最新 DOB 数据包",
+        "eg": "更新数据包",
         "need_ck": false,
         "need_sk": false,
         "need_admin": true

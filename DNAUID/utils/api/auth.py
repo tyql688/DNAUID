@@ -25,14 +25,12 @@ class DNACapability(StrEnum):
     ROLE_CARD = "role_card"
     ACCOUNT_QUERY = "account_query"
     ACCOUNT_ACTION = "account_action"
-    DAMAGE_CALCULATION = "damage_calculation"
 
 
 _CAPABILITY_CHANNELS = {
     DNACapability.ROLE_CARD: (LoginChannel.APP, LoginChannel.WEB),
     DNACapability.ACCOUNT_QUERY: (LoginChannel.APP,),
     DNACapability.ACCOUNT_ACTION: (LoginChannel.APP,),
-    DNACapability.DAMAGE_CALCULATION: (LoginChannel.WEB,),
 }
 
 

@@ -1,4 +1,4 @@
-"""Web API 单测：state / chat / config / reset / startup（仅标准库）。"""
+"""Web API 单测：state / chat / config / reset / startup。"""
 
 import os
 import sys

@@ -8,8 +8,8 @@
 2. 其余 ``gsuid_core.*`` 子模块通过 ``MetaPathFinder`` 兜底为
    ``Dummy`` 对象（可调用、可等待、可做基类、可做装饰器），保证
    ``from gsuid_core.xxx import yyy`` 永远不会在导入期炸掉。
-3. 少数影响演示效果的函数（``convert_img`` / ``get_new_help`` /
-   ``get_qrcode_base64``）提供可工作的特化实现。
+3. 出图、帮助图、数据库基类走 ``_real/`` 下同步来的真实 gsuid_core 源码
+   （见 ``real_gsuid.py``），缺失时直接 ImportError，不做本地替身。
 """
 
 from __future__ import annotations
@@ -28,10 +28,6 @@ from collections.abc import Callable
 from .bot import MockBot
 from .event import MockEvent, MockMessage
 from .segments import MessageSegment
-
-# ---------------------------------------------------------------------------
-# 全局注册表（测试间可 reset）
-# ---------------------------------------------------------------------------
 
 HANDLERS: list[dict[str, Any]] = []
 PLUGIN_INFO: dict[str, Any] = {}
@@ -70,11 +66,6 @@ def get_active_prefixes() -> list[str]:
 def get_plugin_available_prefix(plugin_name: str = "") -> str:  # noqa: ARG001
     prefixes = get_active_prefixes()
     return prefixes[0] if prefixes else ""
-
-
-# ---------------------------------------------------------------------------
-# SV / Plugins
-# ---------------------------------------------------------------------------
 
 
 def _as_tuple(value: Any) -> tuple:
@@ -147,19 +138,12 @@ class Plugins:
         PLUGIN_INFO.update(kwargs)
 
 
-# ---------------------------------------------------------------------------
-# logger / scheduler / subscribe / server
-# ---------------------------------------------------------------------------
-
 _base_logger = logging.getLogger("mock_host.gsuid_core")
 
 
 class _Logger:
     def _log(self, level: int, msg: Any, *a: Any) -> None:
-        try:
-            _base_logger.log(level, str(msg), *a)
-        except Exception:  # pragma: no cover
-            pass
+        _base_logger.log(level, str(msg), *a)
 
     def debug(self, msg: Any, *a: Any) -> None:
         self._log(logging.DEBUG, msg, *a)
@@ -362,76 +346,10 @@ def on_core_start(func: Callable) -> Callable:
     return func
 
 
-# ---------------------------------------------------------------------------
-# 特化小函数
-# ---------------------------------------------------------------------------
+async def get_qrcode_base64(*_args: Any, **_kwargs: Any) -> bytes:
+    """扫码登录的二维码占位：返回真实帮助图，保证出图链路可演示。"""
+    from gsuid_core.help.draw_new_plugin_help import get_new_help  # noqa: PLC0415
 
-
-async def convert_img(img: Any) -> bytes:
-    """优先走上游真实 ``convert_img``，缺失时本地透传。"""
-    from . import real_gsuid as _rg  # noqa: PLC0415
-
-    if _rg.is_real_available("gsuid_core.utils.image.convert"):
-        try:
-            from gsuid_core.utils.image.convert import (  # type: ignore[import-not-found]  # noqa: PLC0415
-                convert_img as real_convert_img,
-            )
-
-            return await real_convert_img(img)
-        except Exception:  # noqa: BLE001
-            pass
-    return _passthrough_image(img)
-
-
-async def _passthrough_image(img: Any) -> bytes:
-    """本地透传：bytes/PIL/其它 -> bytes。"""
-    if isinstance(img, (bytes, bytearray)):
-        return bytes(img)
-    try:
-        from PIL import Image  # type: ignore  # noqa: PLC0415
-
-        if isinstance(img, Image.Image):
-            import io as _io  # noqa: PLC0415
-
-            buf = _io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
-    except ImportError:
-        pass
-    if isinstance(img, str):
-        return img.encode("utf-8", errors="ignore")
-    return repr(img).encode("utf-8", errors="ignore")
-
-
-async def get_new_help(**kwargs: Any) -> bytes:
-    """调用上游 gsuid_core 的真实 ``get_new_help`` 渲染帮助图。
-
-    真实链路缺失（未执行 sync 脚本）时才回退到本地渲染器。
-    """
-    from . import real_gsuid as _rg  # noqa: PLC0415
-
-    if _rg.is_real_available("gsuid_core.help.draw_new_plugin_help"):
-        try:
-            _rg.ensure_core_font()
-            from gsuid_core.help.draw_new_plugin_help import (  # type: ignore[import-not-found]  # noqa: PLC0415
-                get_new_help as real_get_new_help,
-            )
-
-            result = await real_get_new_help(**kwargs)
-            if isinstance(result, (bytes, bytearray)):
-                HELP_RENDERER.update(mode="real", detail="gsuid_core.help.draw_new_plugin_help")
-                return bytes(result)
-        except Exception as exc:  # noqa: BLE001
-            HELP_RENDERER.update(mode="fallback", detail=f"real failed: {exc!r}"[:200])
-    try:
-        from .help_image import draw_plugin_help  # noqa: PLC0415
-
-        return draw_plugin_help(**kwargs)
-    except Exception:  # noqa: BLE001
-        return b"mock-help-image"
-
-
-async def get_qrcode_base64(*args: Any, **kwargs: Any) -> bytes:  # noqa: ARG001
     return await get_new_help()
 
 
@@ -451,14 +369,15 @@ def get_res_path(*parts: Any) -> Path:
     return path
 
 
-HELP_RENDERER: dict[str, str] = {"mode": "unknown", "detail": ""}
+# 避开 core 默认的 8765，e2e 服务与真实 core 可以同时跑
+DEFAULT_PORT = 18765
 
 
 class _CoreConfig:
     """core 侧 HOST/PORT 可随服务启动参数更新（登录页 URL 依赖它）。"""
 
     def __init__(self) -> None:
-        self.values: dict[str, Any] = {"HOST": "127.0.0.1", "PORT": 8765}
+        self.values: dict[str, Any] = {"HOST": "127.0.0.1", "PORT": DEFAULT_PORT}
 
     def configure(self, host: str | None = None, port: int | None = None) -> None:
         if host:
@@ -473,21 +392,6 @@ class _CoreConfig:
 core_config = _CoreConfig()
 
 
-def with_session(func: Callable) -> Callable:
-    """注入 ``session=None`` 的透传装饰器。
-
-    mock 宿主没有真实数据库：handler 内首次使用 session 即抛错，
-    由 dispatcher 转为错误回显，而不是在导入期/调用期出现诡异行为。
-    """
-
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        kwargs.setdefault("session", None)
-        return await func(*args, **kwargs)
-
-    wrapper.__name__ = getattr(func, "__name__", "wrapped")
-    return wrapper
-
-
 class _Site:
     def register_admin(self, cls: Any) -> Any:
         return cls
@@ -497,11 +401,6 @@ class _Site:
 
 
 site = _Site()
-
-
-# ---------------------------------------------------------------------------
-# 通用 Dummy：可调用 / 可等待 / 可继承 / 可做装饰器
-# ---------------------------------------------------------------------------
 
 
 class _DummyMeta(type):
@@ -549,11 +448,6 @@ class Dummy(metaclass=_DummyMeta):
         return "Dummy()"
 
 
-# ---------------------------------------------------------------------------
-# 模块装配
-# ---------------------------------------------------------------------------
-
-
 def _mod(name: str, **attrs: Any) -> types.ModuleType:
     module = types.ModuleType(name)
     for key, value in attrs.items():
@@ -574,14 +468,10 @@ class _FallbackFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         if fullname == "gsuid_core" or fullname.startswith("gsuid_core."):
             if fullname in sys.modules:
                 return None
-            try:
-                from .real_gsuid import REAL_DIR, REAL_SUBMODULES  # noqa: PLC0415
+            from .real_gsuid import REAL_SUBMODULES  # noqa: PLC0415
 
-                rel = REAL_SUBMODULES.get(fullname)
-                if rel and (REAL_DIR / rel).exists():
-                    return None  # 白名单真实模块优先
-            except Exception:  # noqa: BLE001
-                pass
+            if fullname in REAL_SUBMODULES:
+                return None  # 白名单真实模块交给 real_gsuid 的 hook
             return importlib.machinery.ModuleSpec(fullname, self, is_package=True)
         return None
 
@@ -623,27 +513,13 @@ def install() -> None:
     _mod("gsuid_core.config", core_config=core_config)
     _mod("gsuid_core.data_store", get_res_path=get_res_path)
     _mod("gsuid_core.gss", gss=_Gss())
-    try:
-        from fastapi import FastAPI  # noqa: PLC0415
+    from fastapi import FastAPI  # noqa: PLC0415
 
-        _mod("gsuid_core.web_app", app=FastAPI(title="mock-host"))
-    except ImportError:
-        _mod("gsuid_core.web_app", app=Dummy())
+    _mod("gsuid_core.web_app", app=FastAPI(title="mock-host"))
     from . import real_gsuid as _rg  # noqa: PLC0415
 
     _rg.install_hook()
     _mod("gsuid_core.help", PluginHelp=Dummy)
-    # 真实链路缺失时才预装本地存根，否则白名单 hook 提供真实模块
-    if not _rg.is_real_available("gsuid_core.help.draw_new_plugin_help"):
-        _mod("gsuid_core.help.draw_new_plugin_help", get_new_help=get_new_help)
-    if not _rg.is_real_available("gsuid_core.help.model"):
-        _mod("gsuid_core.help.model", PluginHelp=Dummy)
-    if not _rg.is_real_available("gsuid_core.utils.image.convert"):
-        _mod(
-            "gsuid_core.utils.image.convert",
-            convert_img=convert_img,
-            convert_img_sync=lambda img, *a, **k: img,
-        )
     from .gs_config_real import (  # noqa: PLC0415
         StringConfig as RealStringConfig,
         make_pic_gen_config,
@@ -664,14 +540,6 @@ def install() -> None:
     _mod("gsuid_core.status.plugin_status", register_status=lambda *a, **k: STATUS_ENTRIES.append((a, k)))
     # NOTE: gsuid_core.utils.image.* 真实模块由白名单 hook 按需装载，此处不再预装
     _mod("gsuid_core.utils.database.startup", exec_list=[])
-    if not _rg.is_real_available("gsuid_core.utils.database.base_models"):
-        _mod(
-            "gsuid_core.utils.database.base_models",
-            Bind=Dummy,
-            User=Dummy,
-            BaseIDModel=Dummy,
-            with_session=with_session,
-        )
     _mod("gsuid_core.utils.cookie_manager.qrlogin", get_qrcode_base64=get_qrcode_base64)
     _mod("gsuid_core.webconsole.mount_app", PageSchema=Dummy, GsAdminModel=Dummy, site=site)
 

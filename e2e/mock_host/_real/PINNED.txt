@@ -1,4 +1,4 @@
 commit=fb80b874533c23b565a74ebd8549ce09e4742a55
-source=https://github.com/Genshin-bots/gsuid_core
-files=help/model.py,help/draw_new_plugin_help.py,utils/fonts/fonts.py,utils/image/convert.py,utils/image/image_tools.py,utils/image/utils.py,pool.py,i18n.py,utils/database/base_models.py,utils/database/write_gate.py,utils/cookie_manager/qrlogin.py,utils/plugins_config/models.py,utils/download_resource/download_file.py
+source=local gsuid_core working tree
+files=pool.py,i18n.py,help/model.py,help/draw_new_plugin_help.py,utils/fonts/fonts.py,utils/image/convert.py,utils/image/image_tools.py,utils/image/utils.py,utils/database/base_models.py,utils/database/write_gate.py,utils/cookie_manager/qrlogin.py,utils/plugins_config/models.py,utils/download_resource/download_file.py
 license=GPL-3.0-or-later (same as DNAUID)

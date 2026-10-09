@@ -1,4 +1,4 @@
-"""分发器单测：前缀剥离 / 四种路由 / 自定义前缀 / 图片与工具回显（仅标准库）。"""
+"""分发器单测：前缀剥离 / 四种路由 / 自定义前缀 / 图片与工具回显。"""
 
 import os
 import sys
@@ -38,6 +38,10 @@ def _register_routes():
     async def _ann(bot, ev):
         await bot.send(f"公告参数：{ev.text}")
 
+    @SV("单测主人", pm=1).on_fullmatch("主人指令", block=True)
+    async def _master(bot, ev):
+        await bot.send("主人可用")
+
     @sv.on_fullmatch("图文", block=True)
     async def _rich(bot, ev):
         await bot.send(
@@ -69,6 +73,13 @@ def test_prefix_trigger_splits_text():
     host = _fresh_host()
     result = asyncio.run(host.chat("dna开启自动签到"))
     assert result.replies[0]["segments"][0]["text"] == "开关：自动签到"
+
+
+def test_pm_gates_like_real_host():
+    host = _fresh_host()
+    assert not asyncio.run(host.chat("dna主人指令", user_pm=6)).matched
+    result = asyncio.run(host.chat("dna主人指令", user_pm=1))
+    assert result.replies[0]["segments"][0]["text"] == "主人可用"
 
 
 def test_regex_groups():

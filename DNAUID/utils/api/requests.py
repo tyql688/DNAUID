@@ -3,7 +3,7 @@ import json
 import random
 import asyncio
 import contextlib
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal
 from datetime import datetime
 from collections.abc import Mapping
 
@@ -29,8 +29,6 @@ from .api import (
     HAVE_SIGN_IN_URL,
     ACTIVITY_LIST_URL,
     CALENDAR_LIST_URL,
-    DAMAGE_CONFIG_URL,
-    DAMAGE_WEAPON_URL,
     GET_POST_LIST_URL,
     REFRESH_TOKEN_URL,
     ROLE_FOR_TOOL_URL,
@@ -38,9 +36,7 @@ from .api import (
     WEAPON_DETAIL_URL,
     WIKI_HOME_LIST_URL,
     GET_POST_DETAIL_URL,
-    DAMAGE_CALCULATE_URL,
     GET_TASK_PROCESS_URL,
-    DAMAGE_ENVIRONMENT_URL,
     GET_RSA_PUBLIC_KEY_URL,
     ITEM_WEEKLY_REPORT_URL,
     get_local_proxy_url,
@@ -59,26 +55,14 @@ from .sign import get_dev_code, get_signed_headers_and_body
 from ..utils import timed_async_cache
 from .sign_h5 import generate_headers_h5
 from .sign_130 import generate_headers_130
-from .damage_model import (
-    BuildConfigData,
-    WeaponCalculateData,
-    CharacterCalculateData,
-    WeaponCalculateRequest,
-    EnvironmentCalculateData,
-    CharacterCalculateRequest,
-    EnvironmentCalculateRequest,
-)
 from .request_util import (
     RespCode,
     DNAApiResp,
     get_base_header,
-    get_damage_header,
     get_web_login_header,
 )
 from ..database.models import DNAUser
 from ..constants.constants import DNA_GAME_ID
-
-_DamageDataT = TypeVar("_DamageDataT")
 
 
 class DNAApi:
@@ -395,89 +379,6 @@ class DNAApi:
             "POST",
             headers,
             data=payload,
-        )
-
-    async def _damage_request(
-        self,
-        dna_user: DNAUser,
-        url: str,
-        response_model: type[DNAApiResp[_DamageDataT]],
-        payload: dict[str, Any] | None = None,
-    ) -> DNAApiResp[_DamageDataT]:
-        credentials = get_capability_credentials(
-            dna_user,
-            DNACapability.DAMAGE_CALCULATION,
-        )
-        if credentials is None:
-            return response_model.err("伤害计算需要 Web 登录")
-
-        response = await self._dna_request(
-            url,
-            "POST",
-            get_damage_header(credentials.token),
-            json_data=payload,
-        )
-        return response_model.model_validate(response.model_dump())
-
-    async def get_damage_config(
-        self,
-        dna_user: DNAUser,
-    ) -> DNAApiResp[BuildConfigData]:
-        return await self._damage_request(
-            dna_user,
-            DAMAGE_CONFIG_URL,
-            DNAApiResp[BuildConfigData],
-        )
-
-    async def calculate_damage(
-        self,
-        dna_user: DNAUser,
-        request: CharacterCalculateRequest,
-    ) -> DNAApiResp[CharacterCalculateData]:
-        payload = request.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_none=True,
-        )
-        return await self._damage_request(
-            dna_user,
-            DAMAGE_CALCULATE_URL,
-            DNAApiResp[CharacterCalculateData],
-            payload,
-        )
-
-    async def calculate_weapon(
-        self,
-        dna_user: DNAUser,
-        request: WeaponCalculateRequest,
-    ) -> DNAApiResp[WeaponCalculateData]:
-        payload = request.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_none=True,
-        )
-        return await self._damage_request(
-            dna_user,
-            DAMAGE_WEAPON_URL,
-            DNAApiResp[WeaponCalculateData],
-            payload,
-        )
-
-    async def calculate_environment(
-        self,
-        dna_user: DNAUser,
-        request: EnvironmentCalculateRequest,
-    ) -> DNAApiResp[EnvironmentCalculateData]:
-        payload = request.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_none=True,
-        )
-        return await self._damage_request(
-            dna_user,
-            DAMAGE_ENVIRONMENT_URL,
-            DNAApiResp[EnvironmentCalculateData],
-            payload,
         )
 
     async def get_role_detail(

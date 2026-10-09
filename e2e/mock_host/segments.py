@@ -11,23 +11,19 @@ import io
 import base64
 from os import PathLike
 from typing import Any
+from pathlib import Path
 from dataclasses import field, dataclass
+
+from PIL import Image
 
 
 def _image_to_data_url(data: Any) -> tuple[str, str]:
     """把各种形态的图片载荷统一为 ``(data_url, alt)``。"""
-    # PIL 图片
-    try:
-        from PIL import Image  # type: ignore
-
-        if isinstance(data, Image.Image):
-            buf = io.BytesIO()
-            data.save(buf, format="PNG")
-            raw = buf.getvalue()
-            b64 = base64.b64encode(raw).decode("ascii")
-            return f"data:image/png;base64,{b64}", f"PIL-{data.size[0]}x{data.size[1]}"
-    except ImportError:
-        pass
+    if isinstance(data, Image.Image):
+        buf = io.BytesIO()
+        data.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{b64}", f"PIL-{data.size[0]}x{data.size[1]}"
     if isinstance(data, (bytes, bytearray)):
         raw = bytes(data)
         # 常见图片魔数嗅探
@@ -51,24 +47,18 @@ def _image_to_data_url(data: Any) -> tuple[str, str]:
         if data.startswith(("http://", "https://")):
             return data, "url"
         # 本地路径：读文件转 dataURL，否则前端无法渲染（真实宿主会托管图片）
+        # 任意字符串都可能进来，超长串 stat 会抛 OSError
         try:
-            from pathlib import Path as _Path  # noqa: PLC0415
-
-            path = _Path(data)
-            if path.exists() and path.is_file() and path.stat().st_size < 8 * 1024 * 1024:
+            path = Path(data)
+            if path.is_file() and path.stat().st_size < 8 * 1024 * 1024:
                 return _image_to_data_url(path.read_bytes())
         except (OSError, ValueError):
             pass
         return data, "path"
     if isinstance(data, PathLike):
-        try:
-            from pathlib import Path as _Path2  # noqa: PLC0415
-
-            path = _Path2(data)
-            if path.exists() and path.is_file():
-                return _image_to_data_url(path.read_bytes())
-        except (OSError, ValueError):
-            pass
+        path = Path(data)
+        if path.is_file():
+            return _image_to_data_url(path.read_bytes())
         return "", repr(data)[:120]
     return "", repr(data)[:120]
 
@@ -171,14 +161,8 @@ def normalize_message(msg: Any) -> list[dict[str, Any]]:
         return [serialize_segment(MessageSegment.image(bytes(msg)))]
     if isinstance(msg, str):
         return [serialize_segment(msg)]
-    # PIL 图片等其它对象：尝试按图片处理，否则转文本
-    try:
-        from PIL import Image  # type: ignore
-
-        if isinstance(msg, Image.Image):
-            return [serialize_segment(MessageSegment.image(msg))]
-    except ImportError:
-        pass
+    if isinstance(msg, Image.Image):
+        return [serialize_segment(MessageSegment.image(msg))]
     return [serialize_segment(str(msg))]
 
 

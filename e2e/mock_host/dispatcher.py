@@ -64,10 +64,7 @@ def _match_handler(raw: str, body: str, handler: dict[str, Any]) -> dict[str, An
                 return {"command": name, "text": rest, "trigger": name}
         elif kind == "regex":
             # 真宿主用 findall/search 判定（非 match），分组同样按 search 取
-            try:
-                m = re.search(str(trigger), body)
-            except re.error:
-                continue
+            m = re.search(str(trigger), body)
             if m:
                 # 真宿主：groupdict 原样保留 None（插件靠 is not None 过滤未参与分组）
                 groups = dict(m.groupdict() or {})
@@ -99,15 +96,9 @@ class MockHost:
 
         self.bot = bot or MockBot()
         self.history: list[dict[str, Any]] = []
-        try:
-            import gsuid_core.gss as _gss_mod  # noqa: PLC0415
+        import gsuid_core.gss as _gss_mod  # noqa: PLC0415
 
-            from .stubs import _Gss  # noqa: PLC0415
-
-            if isinstance(getattr(_gss_mod, "gss", None), _Gss):
-                _gss_mod.gss.register(self.bot)
-        except Exception:  # noqa: BLE001
-            pass
+        _gss_mod.gss.register(self.bot)
         self.subscriptions = gs_subscribe
         # 长耗时处理器（如登录等待扫码）：首包回复后宽限 N 秒，仍未结束则转后台
         self.handler_timeout = handler_timeout
@@ -125,7 +116,7 @@ class MockHost:
         user_id: str = "10001",
         group_id: str | None = None,
         images: list | None = None,
-        user_pm: int = 6,
+        user_pm: int = 0,
     ) -> DispatchResult:
         import uuid as _uuid  # noqa: PLC0415
 
@@ -166,7 +157,8 @@ class MockHost:
         invoked = False
         base_ev = ev
         for handler in candidates:
-            if base_ev.user_pm < handler.get("pm", 6):
+            # 与真宿主一致：数值越小权限越高，用户 pm 大于指令要求就跳过
+            if base_ev.user_pm > handler["pm"]:
                 continue
             info = _match_handler(text, body, handler)
             if info is None:
@@ -247,10 +239,8 @@ class MockHost:
         task.add_done_callback(lambda t: self._forget_background(t))
 
     def _forget_background(self, task: asyncio.Task) -> None:
-        try:
+        if task in self.background:
             self.background.remove(task)
-        except ValueError:
-            pass
         if not task.cancelled():
             exc = task.exception()
             if exc is not None:

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from PIL import Image, ImageDraw, ImageFont
 
 from ..utils.image import get_smooth_drawer
+from ..utils.api.model import RoleDetail
+from ..utils.dob.build import WeaponSlot
+from ..utils.dob.panel import PanelView
 from ..utils.fonts.dna_fonts import (
     dna_font_18,
     dna_font_20,
@@ -46,19 +47,6 @@ ELEMENT_TEXT_COLORS = {
     "雷": (216, 177, 244, 255),
     "风": (203, 243, 214, 255),
 }
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class _AttributeMetric:
-    label: str
-    value: str
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class _WeaponMetric:
-    label: str
-    name: str
-    value: str
 
 
 def _draw_round_rect(
@@ -214,7 +202,7 @@ def _draw_panel_header(
 def _draw_data_rows(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
-    metrics: list[_AttributeMetric],
+    metrics: list[tuple[str, str]],
     label_color: tuple[int, int, int, int],
     value_color: tuple[int, int, int, int],
     y: int,
@@ -237,16 +225,12 @@ def _draw_data_rows(
             index = row * DATA_COLUMNS + column
             if index >= len(metrics):
                 continue
-            metric = metrics[index]
+            label, value = metrics[index]
             x = PANEL_PADDING + column * cell_width
-            label_font, value_font = _fit_row_fonts(
-                metric.label,
-                metric.value,
-                cell_width,
-            )
+            label_font, value_font = _fit_row_fonts(label, value, cell_width)
             draw.text(
                 (x + 18, row_y + DATA_ROW_HEIGHT // 2),
-                metric.label,
+                label,
                 label_color,
                 label_font,
                 "lm",
@@ -256,7 +240,7 @@ def _draw_data_rows(
                     x + cell_width - 18,
                     row_y + DATA_ROW_HEIGHT // 2,
                 ),
-                metric.value,
+                value,
                 value_color,
                 value_font,
                 "rm",
@@ -267,7 +251,7 @@ def _draw_data_rows(
 def _draw_weapon_footer(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
-    metrics: list[_WeaponMetric],
+    metrics: list[tuple[str, str, str]],
     y: int,
 ) -> int:
     footer = Image.new(
@@ -277,7 +261,7 @@ def _draw_weapon_footer(
     )
     image.alpha_composite(footer, (PANEL_PADDING, y))
     column_width = CONTENT_WIDTH // len(metrics)
-    for index, metric in enumerate(metrics):
+    for index, (slot_label, weapon_name, damage_text) in enumerate(metrics):
         x = PANEL_PADDING + index * column_width
         center_x = x + column_width // 2
         if index > 0:
@@ -292,7 +276,7 @@ def _draw_weapon_footer(
                 width=1,
             )
         value_font = _fit_font(
-            metric.value,
+            damage_text,
             column_width - 36,
             (
                 dna_font_36,
@@ -306,12 +290,12 @@ def _draw_weapon_footer(
         )
         draw.text(
             (center_x, y + 31),
-            metric.value,
+            damage_text,
             VALUE_TEXT,
             value_font,
             "mm",
         )
-        label = f"{metric.label}武器伤害 · {metric.name}"
+        label = f"{slot_label}武器伤害 · {weapon_name}"
         label_font = _fit_font(
             label,
             column_width - 36,
@@ -325,3 +309,66 @@ def _draw_weapon_footer(
             "mm",
         )
     return y + WEAPON_FOOTER_HEIGHT
+
+
+def _rows_height(count: int) -> int:
+    return max(1, (count + DATA_COLUMNS - 1) // DATA_COLUMNS) * DATA_ROW_HEIGHT
+
+
+def draw_damage_section(view: PanelView, role: RoleDetail) -> Image.Image:
+    """伤害计算区块：角色属性（基础 → 最终）+ 武器期望伤害 + 隐藏属性 + 技能字段。"""
+    attr_rows = [(label, f"{base} → {final}") for label, base, final in view.compare_rows]
+    weapon_rows = [
+        (slot.value, weapon.detail.name, f"{weapon.damage:,.0f}" if weapon.damage is not None else "无法计算")
+        for slot in (WeaponSlot.MELEE, WeaponSlot.RANGED, WeaponSlot.SKILL)
+        if (weapon := view.weapons.get(slot)) is not None
+    ]
+    element_color = ELEMENT_TEXT_COLORS.get(role.elementName, HEADER_TEXT)
+
+    height = PANEL_PADDING + HEADER_HEIGHT
+    height += SECTION_GAP + PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + _rows_height(len(attr_rows))
+    if weapon_rows:
+        height += PANEL_BODY_GAP + WEAPON_FOOTER_HEIGHT
+    height += SECTION_GAP + PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + _rows_height(len(view.hidden_rows))
+    for skill in view.skills:
+        height += SECTION_GAP + PANEL_HEADER_HEIGHT + PANEL_BODY_GAP + _rows_height(len(skill.rows))
+    height += PANEL_PADDING
+
+    image = Image.new("RGBA", (PANEL_WIDTH, max(80, height)), (0, 0, 0, 0))
+    _draw_round_rect(image, (0, 0, PANEL_WIDTH, image.height), 10, PANEL_FILL)
+    draw = ImageDraw.Draw(image)
+
+    y = PANEL_PADDING
+    _draw_header_surface(image, (PANEL_PADDING, y, PANEL_WIDTH - PANEL_PADDING, y + HEADER_HEIGHT))
+    draw.rectangle((PANEL_PADDING + 16, y + 20, PANEL_PADDING + 20, y + 44), fill=HEADER_TEXT)
+    draw.text((PANEL_PADDING + 34, y + HEADER_HEIGHT // 2), "伤害计算", HEADER_TEXT, dna_font_30, "lm")
+    draw.text(
+        (PANEL_WIDTH - PANEL_PADDING - 16, y + HEADER_HEIGHT // 2),
+        f"角色 {role.charName}",
+        VALUE_TEXT,
+        dna_font_22,
+        "rm",
+    )
+    y += HEADER_HEIGHT
+
+    y += SECTION_GAP
+    y = _draw_panel_header(image, draw, "角色属性", "基础 → 最终", HEADER_TEXT, SECONDARY_TEXT, y)
+    y += PANEL_BODY_GAP
+    y = _draw_data_rows(image, draw, attr_rows, DATA_TEXT, VALUE_TEXT, y)
+
+    if weapon_rows:
+        y += PANEL_BODY_GAP
+        y = _draw_weapon_footer(image, draw, weapon_rows, y)
+
+    y += SECTION_GAP
+    y = _draw_panel_header(image, draw, "隐藏属性", None, HEADER_TEXT, SECONDARY_TEXT, y)
+    y += PANEL_BODY_GAP
+    y = _draw_data_rows(image, draw, view.hidden_rows, DATA_TEXT, VALUE_TEXT, y)
+
+    for skill in view.skills:
+        y += SECTION_GAP
+        y = _draw_panel_header(image, draw, f"“{skill.name}”", f"Lv.{skill.level}", element_color, SECONDARY_TEXT, y)
+        y += PANEL_BODY_GAP
+        y = _draw_data_rows(image, draw, skill.rows, element_color, VALUE_TEXT, y)
+
+    return image

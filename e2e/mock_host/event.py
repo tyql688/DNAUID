@@ -21,7 +21,7 @@ class MockEvent:
     user_id: str = "10001"
     group_id: str | None = None
     user_type: str = "direct"
-    user_pm: int = 6  # mock 宿主默认给足权限，方便走通全部指令
+    user_pm: int = 0  # mock 宿主默认主人权限，方便走通全部指令
     raw_text: str = ""
     text: str = ""
     command: str = ""
@@ -42,7 +42,7 @@ def make_event(
     group_id: str | None = None,
     bot_id: str = "MockBot",
     images: list | None = None,
-    user_pm: int = 6,
+    user_pm: int = 0,
 ) -> MockEvent:
     """构造一条可直接分发的事件。"""
     uid = str(user_id)

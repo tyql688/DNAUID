@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from enum import StrEnum
 from dataclasses import dataclass
 
 from ..utils.api.model import WeaponInsForTool
+from ..utils.dob.build import WeaponSlot
 from ..utils.name_convert import alias_to_weapon_name
-
-
-class WeaponSlot(StrEnum):
-    CLOSE = "近战"
-    RANGED = "远程"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -71,7 +66,7 @@ def _select_weapon(
 ) -> SelectedWeapon:
     weapon_name = alias_to_weapon_name(input_name)
     weapon = _find_weapon(close_weapons, weapon_name)
-    slot = WeaponSlot.CLOSE
+    slot = WeaponSlot.MELEE
     if weapon is None:
         weapon = _find_weapon(ranged_weapons, weapon_name)
         slot = WeaponSlot.RANGED
@@ -105,9 +100,9 @@ def resolve_weapon_loadout(
             ranged_weapons,
             weapon_name,
         )
-        if selected.slot is WeaponSlot.CLOSE:
+        if selected.slot is WeaponSlot.MELEE:
             if close_weapon is not None:
-                raise WeaponSlotConflictError(WeaponSlot.CLOSE)
+                raise WeaponSlotConflictError(WeaponSlot.MELEE)
             close_weapon = selected
         else:
             if ranged_weapon is not None:

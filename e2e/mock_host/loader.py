@@ -15,13 +15,10 @@ from . import stubs
 
 
 def _dna_packages() -> list[str]:
-    try:
-        import DNAUID  # noqa: PLC0415
+    import DNAUID  # noqa: PLC0415
 
-        pkgs = [name for _, name, ispkg in pkgutil.iter_modules(DNAUID.__path__) if ispkg]
-        return [f"DNAUID.{name}" for name in sorted(pkgs)]
-    except Exception:  # noqa: BLE001
-        return []
+    pkgs = [name for _, name, ispkg in pkgutil.iter_modules(DNAUID.__path__) if ispkg]
+    return [f"DNAUID.{name}" for name in sorted(pkgs)]
 
 
 def ensure_demo_handlers() -> dict[str, Any]:

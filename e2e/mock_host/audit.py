@@ -28,10 +28,7 @@ def collect_gsuid_imports() -> list[tuple[str, str, int]]:
     """收集 (模块, 导入原名, 行号)。别名不影响 import 成败，只核验原名。"""
     out: list[tuple[str, str, int]] = []
     for file in _iter_plugin_files():
-        try:
-            tree = ast.parse(file.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError):
-            continue
+        tree = ast.parse(file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("gsuid_core"):
                 for alias in node.names:
@@ -44,10 +41,7 @@ def collect_attr_usage() -> dict[str, set[str]]:
     targets = ("logger", "bot", "ev", "MessageSegment", "gs_subscribe", "scheduler", "site", "gss")
     found: dict[str, set[str]] = {t: set() for t in targets}
     for file in _iter_plugin_files():
-        try:
-            tree = ast.parse(file.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError):
-            continue
+        tree = ast.parse(file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                 if node.value.id in found:

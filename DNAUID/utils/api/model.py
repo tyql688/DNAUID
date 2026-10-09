@@ -259,7 +259,7 @@ class WeaponDetail(BaseModel):
     attribute: WeaponAttribute = Field(description="武器属性")
     currentVolume: int = Field(description="当前魔之楔")
     # 官方接口对个别武器不返回这两个字段（实测 无声的嘶吼 / 10405），故设为可选；
-    # 消费方回退到数据包的武器类别（见 local_weapon_attribute）
+    # 消费方回退到数据包的武器类别（见 utils/dob/panel）
     elementIcon: str | None = Field(description="元素图标", default=None)
     elementName: str | None = Field(description="元素名称", default=None)
     icon: str = Field(description="武器头像")
