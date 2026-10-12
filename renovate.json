@@ -9,9 +9,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "gscore_auto_update_dep 是 gsuid_core 自定义字段，标准 pep621 管理器不识别",
+      "description": "gscore_auto_upgrade_dep 是 gsuid_core 自定义字段，标准 pep621 管理器不识别",
       "managerFilePatterns": ["/^pyproject\\.toml$/"],
-      "matchStrings": ["gscore_auto_update_dep = \\[\"(?<depName>dna-builder-sdk)>=(?<currentValue>[^\"]+)\""],
+      "matchStrings": ["gscore_auto_upgrade_dep = \\[\"(?<depName>dna-builder-sdk)>=(?<currentValue>[^\"]+)\""],
       "datasourceTemplate": "pypi"
     }
   ],
