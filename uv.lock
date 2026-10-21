@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <4.0"
 
 [[package]]
@@ -289,14 +289,14 @@ wheels = [
 
 [[package]]
 name = "dna-builder-sdk"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgpack" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1c/a4/43f65666e3851ffa600a0127b8c27283bd5dbf853c9f09e85e3f26e61aec/dna_builder_sdk-0.2.0.tar.gz", hash = "sha256:e6d9b032a1eb0cf67582913196d2e7b12e232408ce4c5674d74f511d0326abf1", size = 95865, upload-time = "2026-10-11T17:28:19.812Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/51/9f5fb9a4c2f18a8370117c99068549d576652efcb6591467663648100bb5/dna_builder_sdk-0.3.0.tar.gz", hash = "sha256:d5e880d37777629d87dd5f441188c7c1ec89514410c265b1fc9a1a1e2707a5b4", size = 101797, upload-time = "2026-10-16T02:51:26.492Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/5c/2737f8c6407fac3e8cf71b18ce0f9bcee9256eebf2353afee61e6a51a204/dna_builder_sdk-0.2.0-py3-none-any.whl", hash = "sha256:722db3dbdb894f165f30be40199f74d5934462293fcc554e0511a286254cf2ae", size = 82505, upload-time = "2026-10-11T17:28:18.494Z" },
+    { url = "https://files.pythonhosted.org/packages/05/f5/1938ae4b7e7ddac039337d02a65bf74e55bf85a16bd9377b1e3b949a7cfa/dna_builder_sdk-0.3.0-py3-none-any.whl", hash = "sha256:db481f6c0428bb9fbcc20efe8f9ab47f3628d109aecd5190ec3a93041ff726b9", size = 84662, upload-time = "2026-10-16T02:51:25.127Z" },
 ]
 
 [[package]]
@@ -336,7 +336,7 @@ e2e = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dna-builder-sdk", specifier = ">=0.2.0" },
+    { name = "dna-builder-sdk", specifier = ">=0.3.0" },
     { name = "pycryptodome", specifier = ">=3.23.0" },
     { name = "websocket-client", specifier = ">=1.9.0" },
 ]
