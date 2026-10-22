@@ -58,26 +58,26 @@ def _version_key(pack_version: str) -> tuple[int, ...]:
 
 def _load(pack_version: str) -> None:
     global _tables
-    try:
-        _store.activate(pack_version)
-        _tables = _store.load_tables()
-    except _PACK_ERRORS as error:
-        raise DobPackError(f"DOB 数据包加载失败：{error}") from error
+    _store.activate(pack_version)
+    _tables = _store.load_tables()
 
 
 def _load_local() -> bool:
-    """加载本地最新的数据包（不联网），本地没有或已损坏返回 False，交给 _sync 重新下载。"""
+    """离线加载本地最新兼容包；没有可用包或包已损坏时交给 _sync 下载。"""
     if _tables is not None:
         return True
     installed = _store.installed_versions()
-    if not installed:
-        return False
-    try:
-        _load(max(installed, key=_version_key))
-    except DobPackError as error:
-        logger.warning(f"[DNA DOB] 本地数据包不可用，等待重新下载: {error!r}")
-        return False
-    return True
+    for version in sorted(installed, key=_version_key, reverse=True):
+        try:
+            _load(version)
+        except _PACK_ERRORS as error:
+            if isinstance(error, DobApiError) and error.code == "unsupported_pack":
+                logger.warning(f"[DNA DOB] 跳过不兼容的本地数据包 version={version}: {error!r}")
+                continue
+            logger.warning(f"[DNA DOB] 本地数据包不可用，等待重新下载 version={version}: {error!r}")
+            return False
+        return True
+    return False
 
 
 def _sync() -> tuple[bool, str]:
@@ -86,16 +86,16 @@ def _sync() -> tuple[bool, str]:
     except DobApiError as error:
         raise DobPackError(f"数据包版本列表拉取失败：{error}") from error
     if not remote:
-        raise DobPackError("数据包版本列表为空")
+        raise DobPackError("远端没有兼容的数据包，请更新 DNAUID 后重试")
     latest = max((entry["version"] for entry in remote), key=_version_key)
     # 按实际加载的版本判断：本地同版本的包损坏时会重新下载覆盖
     if _tables is not None and _store.active_version == latest:
         return False, f"DOB 数据包已是最新（v{latest}）"
     try:
         _store.download(latest)
+        _load(latest)
     except _PACK_ERRORS as error:
-        raise DobPackError(f"数据包下载失败：{error}") from error
-    _load(latest)
+        raise DobPackError(f"数据包更新失败：{error}") from error
     for old in _store.installed_versions():
         if old != latest:
             shutil.rmtree(Path(_store.cache_dir) / old)
