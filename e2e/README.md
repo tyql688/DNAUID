@@ -50,7 +50,11 @@ uv sync --group e2e
 uv run --group e2e pytest e2e/tests/ -v   # 全量（含约1分钟的横扫）
 ```
 
-结算回归（`tests/test_settlement.py`）和数据包加载 / 更新回归（`tests/test_pack.py`）离线运行，CI 只跑这两项。改了结算口径要重新生成期望值，并逐项核对 `expected.json` 的 diff：
+结算回归（`tests/test_settlement.py`）和数据包加载 / 更新回归（`tests/test_pack.py`）离线运行，CI 只跑这两项。
+
+结算样本固定使用 `1.6.208.6` 的数值。数据包采用 SDK 0.3 的格式：魔之楔数值放在 `加成` 子表，BUFF 和特效数值放在 `attr` 子表。仅迁移字段位置时，`expected.json` 应保持不变。
+
+改了结算口径要重新生成期望值，并逐项核对 `expected.json` 的 diff：
 
 ```bash
 python e2e/tests/test_settlement.py --update
