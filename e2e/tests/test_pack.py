@@ -30,7 +30,8 @@ def _stub_module(name: str, **attrs: object) -> None:
 _stub_module("gsuid_core", __path__=[])
 _stub_module("gsuid_core.logger", logger=logging.getLogger("dnauid-pack"))
 _stub_module("gsuid_core.sv", Plugins=lambda **_kwargs: None)
-_stub_module("DNAUID.utils.resource.RESOURCE_PATH", DOB_PATH=FIX)
+if "gsuid_core.bot" not in sys.modules:
+    _stub_module("DNAUID.utils.resource.RESOURCE_PATH", DOB_PATH=FIX)
 
 from dna_builder_sdk import DataPackStore  # noqa: E402
 from dna_builder_sdk.data_pack import DATA_PACK_FORMAT_MAJOR  # noqa: E402

@@ -25,7 +25,7 @@ from ..utils.image import (
 )
 from .damage_renderer import draw_damage_section
 from ..utils.api.model import Mode, RoleDetail
-from ..utils.dob.build import DobBuild, WeaponSlot
+from ..utils.dob.build import WeaponSlot
 from ..utils.dob.panel import PanelView, WeaponView
 from ..utils.dob.records import mod_name, mod_quality
 from ..utils.fonts.dna_fonts import dna_font_18, dna_font_24, dna_font_26
@@ -239,7 +239,7 @@ async def _char_mod_grid(role: RoleDetail) -> Image.Image:
 
 
 async def render_role_card(
-    build: DobBuild,
+    role: RoleDetail,
     view: PanelView,
     *,
     info_box: Image.Image,
@@ -251,7 +251,6 @@ async def render_role_card(
 
     grade_level 为 None 时不画溯源行（DOB 构筑没有溯源数据）。
     """
-    role = build.role
     attr_table = _attr_table(view)
     skill_row = await _skill_row(role)
     weapon_sections = [

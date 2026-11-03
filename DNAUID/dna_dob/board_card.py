@@ -4,7 +4,7 @@ import asyncio
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .service import Board, BuildRow
+from .service import Board, BuildRow, BuildScore
 from ..utils.image import (
     COLOR_GOLD,
     COLOR_WHITE,
@@ -126,9 +126,14 @@ async def _row_line(row: BuildRow, char_head: Image.Image) -> Image.Image:
     line.alpha_composite(await _author_head(row), (PAD + 84, 72))
     meta = _clip(draw, f"{row.author}  {row.update_at}", dna_font_22, 320)
     draw.text((PAD + 84 + 36, 86), meta, fill=DIM, font=dna_font_22, anchor="lm")
-    draw.text((W - PAD, 24), _clip(draw, row.target_fn, dna_font_20, 220), fill=FAINT, font=dna_font_20, anchor="rm")
-    draw.text((W - PAD, 58), f"{row.dps:,}", fill=COLOR_GOLDENROD, font=dna_font_26, anchor="rm")
-    draw.text((W - PAD, 92), f"#{row.rank}", fill=DIM, font=dna_font_22, anchor="rm")
+    score = row.score
+    label = score.target_fn if isinstance(score, BuildScore) else score.reason
+    label = " ".join(label.splitlines())
+    value = f"{score.dps:,}" if isinstance(score, BuildScore) else "无法计算"
+    draw.text((W - PAD, 24), _clip(draw, label, dna_font_20, 220), fill=FAINT, font=dna_font_20, anchor="rm")
+    draw.text((W - PAD, 58), value, fill=COLOR_GOLDENROD, font=dna_font_26, anchor="rm")
+    if row.rank is not None:
+        draw.text((W - PAD, 92), f"#{row.rank}", fill=DIM, font=dna_font_22, anchor="rm")
     return line
 
 

@@ -13,7 +13,7 @@ from .service import DobFetchError, fetch_boards, bot_char_name, synthesize_buil
 from .board_card import draw_board_card, draw_build_list_card
 from .build_card import draw_build_card
 from ..utils.dob.pack import DobPackError, sync, describe, check_update, ensure_data_ready
-from ..utils.dob.build import DobBuildError
+from ..utils.dob.engine import DobBuildError
 from ..dna_config.prefix import dna_prefix
 from ..utils.name_convert import char_name_to_char_id
 from ..utils.constants.constants import PATTERN

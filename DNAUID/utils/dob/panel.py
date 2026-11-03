@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import re
 import math
+import asyncio
+from typing import Literal
 from dataclasses import dataclass
 
-from dna_builder_sdk.calc.damage import DamageContext
+from pydantic import Field, BaseModel
 
 from gsuid_core.logger import logger
 
 from . import records
-from .build import DobBuild, WeaponSlot
+from .pack import get_tables
+from .build import WeaponSlot, role_settings
+from .engine import DobEngine, SkillField, open_engine
 from ..api.model import RoleDetail, WeaponDetail
 
 SKILL_MAX_LEVEL = 12
@@ -46,6 +50,11 @@ _PLACEHOLDER_RE = re.compile(r"\{%?\}")
 _EMPTY_PANEL = {"攻击": 0.0, "暴击": 0.0, "暴伤": 0.0, "攻速": 0.0, "触发": 0.0}
 
 
+class _WeaponMetadata(BaseModel):
+    damage_type: str | None = Field(default=None, alias="伤害类型")
+    inherit: Literal["melee", "ranged"] | None = None
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class WeaponView:
     detail: WeaponDetail
@@ -71,22 +80,29 @@ class PanelView:
     skills: list[SkillView]
 
 
-def compute_panel(build: DobBuild) -> PanelView:
+async def settle_role(role: RoleDetail, weapons: dict[WeaponSlot, WeaponDetail]) -> PanelView:
+    """官方面板在工作线程内完成装配与结算，只返回展示数据。"""
+    return await asyncio.to_thread(_settle_role, role, weapons)
+
+
+def _settle_role(role: RoleDetail, weapons: dict[WeaponSlot, WeaponDetail]) -> PanelView:
+    with open_engine(role.charId, role_settings(role, weapons), get_tables()) as engine:
+        return compute_panel(engine, role, weapons)
+
+
+def compute_panel(engine: DobEngine, role: RoleDetail, weapons: dict[WeaponSlot, WeaponDetail]) -> PanelView:
     """面板与伤害全部取引擎结算值，这里只负责挑选与格式化。"""
-    engine = build.engine
-    attrs = engine.calculate_weapon_attributes()
+    attrs = engine.char_panel()
     rates = {key: min(attrs[key], cap) for key, cap in _RATE_CAPS.items()}
-    damage_ctx = engine.damage_context(attrs)
-    damage_types = {slot: info["伤害类型"] for slot, info in engine.weapons_info().items() if info}
+    panels = engine.weapon_panels()
     return PanelView(
-        attr_rows=_attr_rows(build.role, attrs, rates),
+        attr_rows=_attr_rows(role, attrs, rates),
         hidden_rows=_hidden_rows(attrs),
-        compare_rows=_compare_rows(build.role, attrs, rates),
+        compare_rows=_compare_rows(role, attrs, rates),
         weapons={
-            slot: _weapon_view(build.role, slot, detail, attrs["攻击"], damage_ctx, damage_types.get(slot))
-            for slot, detail in build.weapons.items()
+            slot: _weapon_view(role, slot, detail, attrs["攻击"], engine, panels) for slot, detail in weapons.items()
         },
-        skills=_skill_views(build),
+        skills=_skill_views(engine, role),
     )
 
 
@@ -113,14 +129,14 @@ def _main_label(role: RoleDetail, key: str, label: str) -> str:
     return _atk_label(role) if key == "攻击" else label
 
 
-def _attr_rows(role: RoleDetail, attrs: dict, rates: dict[str, float]) -> list[tuple[str, str]]:
+def _attr_rows(role: RoleDetail, attrs: dict[str, float], rates: dict[str, float]) -> list[tuple[str, str]]:
     rows = [(_main_label(role, key, label), _fmt_num(attrs[key])) for key, label in _MAIN_ATTRS]
     rows += [(key, _fmt_pct(rate * 100)) for key, rate in rates.items()]
     rows += [(key, _fmt_pct(attrs[key] * 100)) for key in _ZERO_BASED]
     return rows
 
 
-def _hidden_rows(attrs: dict) -> list[tuple[str, str]]:
+def _hidden_rows(attrs: dict[str, float]) -> list[tuple[str, str]]:
     hp, defense, shield, reduce = attrs["生命"], attrs["防御"], attrs["护盾"], attrs["减伤"]
     rows = [
         ("增伤", _fmt_pct(attrs["增伤"] * 100)),
@@ -130,7 +146,7 @@ def _hidden_rows(attrs: dict) -> list[tuple[str, str]]:
     if hp > 0 and defense >= 0:
         ehp = (hp / (1 - defense / (300 + defense)) + shield) / (1 - reduce)
         rows.append(("有效生命", _fmt_num(ehp)))
-    rows += [(key, _fmt_pct(attrs[key] * 100)) for key in _HIDDEN_ATTRS if abs(attrs.get(key, 0.0)) > 1e-11]
+    rows += [(key, _fmt_pct(attrs[key] * 100)) for key in _HIDDEN_ATTRS if key in attrs and abs(attrs[key]) > 1e-11]
     return rows
 
 
@@ -139,7 +155,7 @@ def _base_rate(text: str) -> str:
     return f"{float(raw):.0f}%" if raw.replace(".", "", 1).isdigit() else "100%"
 
 
-def _compare_rows(role: RoleDetail, attrs: dict, rates: dict[str, float]) -> list[tuple[str, str, str]]:
+def _compare_rows(role: RoleDetail, attrs: dict[str, float], rates: dict[str, float]) -> list[tuple[str, str, str]]:
     """伤害区块的「基础 → 最终」：基础取官方裸值，最终取引擎结算。"""
     base = role.attribute
     base_main = {"攻击": base.atk, "生命": base.maxHp, "护盾": base.maxES, "防御": base.defense, "神智": base.maxSp}
@@ -170,11 +186,19 @@ def _weapon_view(
     slot: WeaponSlot,
     detail: WeaponDetail,
     char_attack: float,
-    damage_ctx: DamageContext,
-    damage_type: str | None,
+    engine: DobEngine,
+    panels: dict[str, dict[str, float]],
 ) -> WeaponView:
     # 继承型同律武器的面板就是被继承武器的面板，由引擎处理
-    panel = damage_ctx.panels.get(slot, _EMPTY_PANEL)
+    panel = panels[slot] if slot in panels else _EMPTY_PANEL
+    record = records.con_weapon_record(role.charId) if slot is WeaponSlot.SKILL else records.weapon_record(detail.id)
+    metadata = _WeaponMetadata.model_validate(record) if record is not None else None
+    if metadata is not None and metadata.inherit is not None:
+        inherited = WeaponSlot.MELEE if metadata.inherit == "melee" else WeaponSlot.RANGED
+        weapon_id = engine.settings[f"{metadata.inherit}Weapon"]
+        record = records.weapon_record(weapon_id) if isinstance(weapon_id, int) and inherited in panels else None
+        metadata = _WeaponMetadata.model_validate(record) if record is not None else None
+    damage_type = metadata.damage_type if metadata is not None else None
     attack = panel["攻击"]
     rows = [
         ("武器类型", _weapon_category(role, slot, detail)),
@@ -187,31 +211,31 @@ def _weapon_view(
     # 引擎给的是期望伤害倍率（敌人为默认木桩、满血），乘总攻击即一次攻击的期望伤害
     damage = None
     if attack > 0 and char_attack > 0:
-        damage = damage_ctx.get_damage(slot, None, None, None)["expectedDamage"] * (char_attack + attack)
+        damage = engine.damage_multiplier(slot) * (char_attack + attack)
     return WeaponView(detail=detail, rows=rows, damage=damage)
 
 
-def _skill_views(build: DobBuild) -> list[SkillView]:
+def _skill_views(engine: DobEngine, role: RoleDetail) -> list[SkillView]:
     views = [
         SkillView(
             name=skill.skillName,
             level=min(max(skill.level, 1), SKILL_MAX_LEVEL),
-            rows=[(field["名称"], _fmt_field(field)) for field in fields],
+            rows=[(field.name, _fmt_field(field)) for field in fields],
         )
-        for skill in build.role.skills
-        if (fields := build.engine.skill_fields(skill.skillName))
+        for skill in role.skills
+        if (fields := engine.skill_fields(skill.skillName))
     ]
     if not views:
-        logger.warning(f"[DNA 面板] 角色 {build.role.charName} 没有可结算的技能字段")
+        logger.warning(f"[DNA 面板] 角色 {role.charName} 没有可结算的技能字段")
     return views
 
 
-def _fmt_field(field: dict) -> str:
+def _fmt_field(field: SkillField) -> str:
     """技能字段显示值：有「格式」模板时依次代入 值/值2，否则按字段名选单位。"""
-    value = field["值"]
-    fmt = field.get("格式")
+    value = field.value
+    fmt = field.format
     if fmt:
-        second = field.get("值2")
+        second = field.value2
         values = iter([value])
         rest = value if second is None else second
 
@@ -229,7 +253,7 @@ def _fmt_field(field: dict) -> str:
 
         return _PLACEHOLDER_RE.sub(_sub, fmt)
 
-    name = field["名称"]
+    name = field.name
     if "半径" in name:
         return f"{value:.1f}米"
     if "时间" in name or name in ("延迟", "卡肉", "取消", "连段"):

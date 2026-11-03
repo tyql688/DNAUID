@@ -29,8 +29,9 @@ from ..utils.api.model import (
     DNARoleForToolRes,
     DNAWeaponDetailRes,
 )
-from ..utils.dob.build import WeaponSlot, DobBuildError, build_engine
-from ..utils.dob.panel import compute_panel
+from ..utils.dob.build import WeaponSlot
+from ..utils.dob.panel import settle_role
+from ..utils.dob.engine import DobBuildError
 from ..utils.msgs.notify import (
     dna_not_found,
     dna_uid_invalid,
@@ -199,7 +200,7 @@ async def draw_role_card(
             return
 
     try:
-        build = build_engine(role_detail, weapons)
+        panel = await settle_role(role_detail, weapons)
     except DobBuildError as error:
         await send_dna_notify(bot, ev, f"面板计算失败：{error}")
         return
@@ -215,8 +216,8 @@ async def draw_role_card(
         uid_hidden=uid_hidden,
     )
     card, portrait_path = await render_role_card(
-        build,
-        compute_panel(build),
+        role_detail,
+        panel,
         info_box=await _info_box(role_detail, char_name),
         avatar_title=avatar_title,
         footer_line=source_line(),

@@ -16,7 +16,6 @@ from ..utils.image import (
     get_avatar_title_img,
 )
 from ..utils.dob.pack import source_line
-from ..utils.dob.panel import compute_panel
 from ..dna_detail.role_card import render_role_card
 from ..utils.fonts.dna_fonts import dna_font_24, dna_font_30
 
@@ -30,7 +29,7 @@ def _clip(text: str, limit: int) -> str:
 
 def _info_box(card: BuildCard) -> Image.Image:
     """构筑标题 + 属性图标 + 角色·等级（构筑没有溯源数据，不画溯源徽章）。"""
-    role = card.build.role
+    role = card.role
     box = Image.new("RGBA", (400, 200), (0, 0, 0, 0))
     draw = ImageDraw.Draw(box)
     with Image.open(TEXT_PATH / "point.png") as point:
@@ -51,7 +50,7 @@ async def _author_title(card: BuildCard, ev: Event) -> Image.Image:
         ev,
         card.bdid,
         _clip(card.author, 12),
-        user_level=card.build.role.level,
+        user_level=card.role.level,
         other_info=[
             (_clip(card.target_fn, 12), card.target_value),
             ("点赞", str(card.likes)),
@@ -67,8 +66,8 @@ async def _author_title(card: BuildCard, ev: Event) -> Image.Image:
 
 async def draw_build_card(card: BuildCard, ev: Event) -> Image.Image:
     image, _ = await render_role_card(
-        card.build,
-        compute_panel(card.build),
+        card.role,
+        card.panel,
         info_box=_info_box(card),
         avatar_title=await _author_title(card, ev),
         footer_line=f"{source_line()} | BD:{card.bdid}",
