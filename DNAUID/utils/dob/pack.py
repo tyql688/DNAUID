@@ -90,7 +90,7 @@ def _sync() -> tuple[bool, str]:
     latest = max((entry["version"] for entry in remote), key=_version_key)
     # 按实际加载的版本判断：本地同版本的包损坏时会重新下载覆盖
     if _tables is not None and _store.active_version == latest:
-        return False, f"DOB 数据包已是最新（v{latest}）"
+        return False, f"DOB 数据包已是当前 SDK 支持的最新版本（v{latest}）"
     try:
         _store.download(latest)
         _load(latest)

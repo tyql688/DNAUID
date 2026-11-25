@@ -208,7 +208,7 @@ def _serve_build(monkeypatch: pytest.MonkeyPatch, *settings: dict[str, JsonValue
     monkeypatch.setattr(service.httpx, "AsyncClient", client)
 
 
-@pytest.mark.parametrize("variant", ["legacy", "selected", "unused_null", "selected_null", "null_fields"])
+@pytest.mark.parametrize("variant", ["legacy", "selected", "unused_null", "out_of_range", "null_fields"])
 def test_dob_build_and_board(monkeypatch: pytest.MonkeyPatch, variant: str) -> None:
     settings = TypeAdapter(dict[str, JsonValue]).validate_python(
         {
@@ -225,9 +225,9 @@ def test_dob_build_and_board(monkeypatch: pytest.MonkeyPatch, variant: str) -> N
             "modVariants": [{"角色": CHAR_MODS, "近战": MELEE_MODS, "远程": RANGED_MODS}],
         }
     )
-    if variant in ("unused_null", "selected_null"):
+    if variant in ("unused_null", "out_of_range"):
         settings["modVariants"] = [None, None]
-        settings["modVariantIndex"] = 1 if variant == "selected_null" else 0
+        settings["modVariantIndex"] = 3 if variant == "out_of_range" else 0
     elif variant == "null_fields":
         settings["charLevel"] = None
         settings["meleeWeaponLevel"] = None
@@ -269,8 +269,10 @@ def test_dob_invalid_weapon_is_reported(monkeypatch: pytest.MonkeyPatch) -> None
         asyncio.run(service.synthesize_build("sdk040"))
 
 
-@pytest.mark.parametrize("slots", [{}, {"角色": None, "近战": None, "远程": None, "同律": None}])
-def test_dob_empty_variant_keeps_empty_slots(monkeypatch: pytest.MonkeyPatch, slots: dict[str, JsonValue]) -> None:
+@pytest.mark.parametrize("slots", [None, {}, {"角色": None, "近战": None, "远程": None, "同律": None}])
+def test_dob_empty_variant_keeps_empty_slots(
+    monkeypatch: pytest.MonkeyPatch, slots: dict[str, JsonValue] | None
+) -> None:
     _serve_build(
         monkeypatch,
         TypeAdapter(dict[str, JsonValue]).validate_python(
@@ -290,6 +292,8 @@ def test_dob_empty_variant_keeps_empty_slots(monkeypatch: pytest.MonkeyPatch, sl
     assert [mode.id for mode in card.role.modes] == [-1] * 8 + [51765]
     assert card.target_value == "2575"
     assert ("光属性攻击", "2,575.7") in card.panel.attr_rows
+    boards = asyncio.run(service.fetch_boards())
+    assert boards[0].rows[0].score == service.BuildScore(target_fn="角色::攻击!", dps=2576)
 
 
 def test_failed_calculation_has_no_dps_rank(monkeypatch: pytest.MonkeyPatch) -> None:

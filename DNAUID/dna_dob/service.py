@@ -78,22 +78,16 @@ class _BuildSettings(_SettingsModel):
     skillWeaponMods: list[ModSlot] = Field(default_factory=list)
     auraMod: int = 31524
     modVariantIndex: int = 0
-    modVariants: list[_ModVariant | None] = Field(default_factory=list)
+    modVariants: list[Annotated[_ModVariant, BeforeValidator(lambda value: {} if value is None else value)]] = Field(
+        default_factory=list
+    )
 
     def slots(self) -> tuple[list[ModSlot], list[ModSlot], list[ModSlot], list[ModSlot], int]:
-        char, melee, ranged, skill, aura = (
-            self.charMods,
-            self.meleeMods,
-            self.rangedMods,
-            self.skillWeaponMods,
-            self.auraMod,
-        )
         if 1 <= self.modVariantIndex <= len(self.modVariants):
             variant = self.modVariants[self.modVariantIndex - 1]
-            if variant is not None:
-                char, melee, ranged, skill = variant.char, variant.melee, variant.ranged, variant.skill
-                aura = variant.aura if variant.aura is not None and variant.aura > 0 else aura
-        return char, melee, ranged, skill, aura
+            aura = variant.aura if variant.aura is not None and variant.aura > 0 else self.auraMod
+            return variant.char, variant.melee, variant.ranged, variant.skill, aura
+        return self.charMods, self.meleeMods, self.rangedMods, self.skillWeaponMods, self.auraMod
 
 
 class _SkillRecord(_DobModel):
